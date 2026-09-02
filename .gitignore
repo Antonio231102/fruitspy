@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Proprietary or generated Android artifacts
+*.apk
+*.apk.idsig
+*.keystore
+*.jks
+
+# Local capture and UI-inspection artifacts
+*.pcap
+*.pcapng
+fruitspy-screen.png
+fruitspy-window.xml
+
+# Local configuration overrides and secrets
+.env
+.env.*
+config.local.json
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

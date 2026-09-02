@@ -1,0 +1,21 @@
+{
+  "bind_host": "0.0.0.0",
+  "advertise_host": "auto",
+  "game": {
+    "name": "FruitNinjaand",
+    "secret_key": "nNfhSl",
+    "default_query_port": 6500,
+    "server_browser_version": 1,
+    "max_players": 2
+  },
+  "ports": {
+    "availability_qr_udp": 27900,
+    "peerchat_tcp": 6667,
+    "server_browser_tcp": 28910,
+    "natneg_udp": 27901
+  },
+  "timeouts": {
+    "reported_server_seconds": 120,
+    "nat_session_seconds": 60
+  }
+}

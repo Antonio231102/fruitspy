@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fruitspy-server"
+version = "0.1.0"
+description = "Standalone GameSpy-compatible LAN server for Fruit Ninja 1.7.6"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+fruitspy-server = "fruitspy.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fruitspy*"]

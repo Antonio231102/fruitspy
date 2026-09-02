@@ -1,0 +1,258 @@
+import asyncio
+import socket
+import struct
+import unittest
+
+from fruitspy.availability_qr import AvailabilityQRProtocol
+from fruitspy.crypto import gsseckey
+from fruitspy.natneg import MAGIC, NN_CONNECT, NN_INIT, NatNegProtocol
+from fruitspy.peerchat import PeerChatServer
+from fruitspy.server_browser import ServerBrowserServer
+from fruitspy.state import ServerState
+from tests.helpers import test_config
+from tests.test_peerchat import EncryptedPeerClient
+from tests.test_protocols import (
+    decrypt_server_browser,
+    decrypt_server_browser_stream,
+    server_browser_request,
+)
+
+
+class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self) -> None:
+        self.config = test_config()
+        self.state = ServerState(120, 60)
+        loop = asyncio.get_running_loop()
+        self.qr_transport, _ = await loop.create_datagram_endpoint(
+            lambda: AvailabilityQRProtocol(self.config, self.state),
+            local_addr=("127.0.0.1", 0),
+        )
+        self.qr_port = self.qr_transport.get_extra_info("sockname")[1]
+        self.nat_transport, _ = await loop.create_datagram_endpoint(
+            lambda: NatNegProtocol(self.config, self.state),
+            local_addr=("127.0.0.1", 0),
+        )
+        self.nat_port = self.nat_transport.get_extra_info("sockname")[1]
+        self.chat_service = PeerChatServer(self.config)
+        self.chat_listener = await asyncio.start_server(
+            self.chat_service.handle,
+            "127.0.0.1",
+            0,
+        )
+        self.chat_port = self.chat_listener.sockets[0].getsockname()[1]
+        self.browser_service = ServerBrowserServer(self.config, self.state)
+        self.browser_listener = await asyncio.start_server(
+            self.browser_service.handle,
+            "127.0.0.1",
+            0,
+        )
+        self.browser_port = self.browser_listener.sockets[0].getsockname()[1]
+        self.sockets: list[socket.socket] = []
+
+    async def asyncTearDown(self) -> None:
+        for sock in self.sockets:
+            sock.close()
+        self.chat_listener.close()
+        self.browser_listener.close()
+        self.qr_transport.close()
+        self.nat_transport.close()
+        await self.chat_listener.wait_closed()
+        await self.browser_listener.wait_closed()
+
+    def udp_socket(self) -> socket.socket:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.bind(("127.0.0.1", 0))
+        sock.setblocking(False)
+        self.sockets.append(sock)
+        return sock
+
+    async def exchange_udp(self, sock: socket.socket, data: bytes, port: int) -> bytes:
+        loop = asyncio.get_running_loop()
+        await loop.sock_sendto(sock, data, ("127.0.0.1", port))
+        response, _ = await asyncio.wait_for(loop.sock_recvfrom(sock, 2048), 2)
+        return response
+
+    async def test_matchmaking_pipeline_reaches_peer_endpoints(self) -> None:
+        availability_client = self.udp_socket()
+        availability = await self.exchange_udp(
+            availability_client,
+            b"\x09\x00\x00\x00\x00FruitNinjaand\x00",
+            self.qr_port,
+        )
+        self.assertEqual(availability, b"\xfe\xfd\x09" + b"\x00" * 8)
+
+        host_qr = self.udp_socket()
+        instance = b"HOST"
+        heartbeat = (
+            b"\x03"
+            + instance
+            + b"gamename\x00FruitNinjaand\x00"
+            + b"hostname\x00Synthetic Host\x00"
+            + b"hostport\x006500\x00"
+            + b"localip0\x00127.0.0.1\x00"
+            + b"localport\x006500\x00"
+            + b"maxplayers\x002\x00"
+            + b"numplayers\x001\x00"
+            + b"gamemode\x00openstaging\x00"
+            + b"natneg\x001\x00\x00"
+        )
+        challenge_packet = await self.exchange_udp(host_qr, heartbeat, self.qr_port)
+        challenge = challenge_packet[7:-1].decode("ascii")
+        registered = await self.exchange_udp(
+            host_qr,
+            b"\x01" + instance + gsseckey(challenge, "nNfhSl").encode("ascii") + b"\x00",
+            self.qr_port,
+        )
+        self.assertEqual(registered[:3], b"\xfe\xfd\x0a")
+
+        challenge8 = b"LANMATCH"
+        browser_request = server_browser_request(
+            challenge8,
+            "\\hostname\\maxplayers\\numplayers\\gamemode\\natneg",
+        )
+        browser_reader, browser_writer = await asyncio.open_connection(
+            "127.0.0.1", self.browser_port
+        )
+        browser_writer.write(browser_request)
+        await browser_writer.drain()
+        encrypted_list = await asyncio.wait_for(browser_reader.read(4096), 2)
+        browser_writer.close()
+        await browser_writer.wait_closed()
+        server_list = decrypt_server_browser(encrypted_list, challenge8)
+        self.assertIn(b"Synthetic Host\x00", server_list)
+        self.assertIn(b"openstaging\x00", server_list)
+        self.assertIn(struct.pack(">H", 6500), server_list)
+
+
+        first_chat = await EncryptedPeerClient.connect(self.chat_port)
+        second_chat = await EncryptedPeerClient.connect(self.chat_port)
+        try:
+            for client, nick in ((first_chat, "host"), (second_chat, "joiner")):
+                await client.send(f"NICK {nick}")
+                await client.send(f"USER {nick} 0 * :{nick}")
+                await client.read_until(f"376 {nick}")
+            channel = "#GSP!FruitNinjaand!synthetic"
+            await first_chat.send(f"JOIN {channel}")
+            await first_chat.read_until("End of NAMES list")
+            await second_chat.send(f"JOIN {channel}")
+            await second_chat.read_until("End of NAMES list")
+            await first_chat.read_until("joiner!joiner@")
+            self.assertEqual(len(self.chat_service.channels[channel.casefold()].users), 2)
+        finally:
+            await first_chat.close()
+            await second_chat.close()
+
+        first_nat = self.udp_socket()
+        second_nat = self.udp_socket()
+        cookie = b"LAN1"
+        first_init = MAGIC + bytes((3, NN_INIT)) + cookie + bytes((0, 0, 1)) + b"\x00" * 6
+        second_init = MAGIC + bytes((3, NN_INIT)) + cookie + bytes((0, 1, 1)) + b"\x00" * 6
+        first_ack = await self.exchange_udp(first_nat, first_init, self.nat_port)
+        self.assertEqual(first_ack[7], 1)
+        loop = asyncio.get_running_loop()
+        await loop.sock_sendto(second_nat, second_init, ("127.0.0.1", self.nat_port))
+        first_connect, _ = await asyncio.wait_for(loop.sock_recvfrom(first_nat, 2048), 2)
+        second_packets = []
+        while len(second_packets) < 2:
+            packet, _ = await asyncio.wait_for(loop.sock_recvfrom(second_nat, 2048), 2)
+            second_packets.append(packet)
+        self.assertEqual(first_connect[7], NN_CONNECT)
+        self.assertIn(NN_CONNECT, [packet[7] for packet in second_packets])
+
+
+    async def test_server_info_request_returns_full_rules(self) -> None:
+        source = ("10.0.0.10", 6500)
+        self.state.report_server(
+            source,
+            b"INFO",
+            {
+                "gamename": "FruitNinjaandam",
+                "hostname": "Automatch Host",
+                "hostport": "6500",
+                "numplayers": "1",
+                "maxplayers": "2",
+                "natneg": "1",
+                "localip0": source[0],
+            },
+        )
+        self.state.register_server(source)
+
+        challenge = b"FULLRULE"
+        browser_reader, browser_writer = await asyncio.open_connection(
+            "127.0.0.1",
+            self.browser_port,
+        )
+        try:
+            browser_writer.write(
+                server_browser_request(
+                    challenge,
+                    "",
+                    options=4,
+                    query_game="FruitNinjaandam",
+                )
+            )
+            await browser_writer.drain()
+            initial = await asyncio.wait_for(browser_reader.read(4096), 2)
+            initial_body, cipher = decrypt_server_browser_stream(initial, challenge)
+            self.assertIn(socket.inet_aton(source[0]), initial_body)
+
+            info_request = (
+                struct.pack(">H", 9)
+                + b"\x01"
+                + socket.inet_aton(source[0])
+                + struct.pack(">H", source[1])
+            )
+            browser_writer.write(info_request)
+            await browser_writer.drain()
+            encrypted_info = await asyncio.wait_for(browser_reader.read(4096), 2)
+            info = cipher.decrypt(encrypted_info)
+            self.assertEqual(struct.unpack_from(">H", info)[0], len(info))
+            self.assertTrue(info[3] & 2)
+            self.assertEqual(info[8:12], socket.inet_aton(source[0]))
+            self.assertEqual(info[2], 2)
+            self.assertTrue(info[3] & 128)
+            self.assertIn(b"gamename\x00FruitNinjaandam\x00", info)
+            self.assertIn(b"hostname\x00Automatch Host\x00", info)
+        finally:
+            browser_writer.close()
+            await browser_writer.wait_closed()
+
+    async def test_server_message_request_relays_udp_payload(self) -> None:
+        target = self.udp_socket()
+        target_address = target.getsockname()
+        self.state.report_server(
+            target_address,
+            b"RLY1",
+            {
+                "gamename": "FruitNinjaandam",
+                "hostport": str(target_address[1]),
+                "localip0": target_address[0],
+                "localport": str(target_address[1]),
+            },
+        )
+        self.state.register_server(target_address)
+
+        reader, writer = await asyncio.open_connection("127.0.0.1", self.browser_port)
+        try:
+            payload = b"\xfd\xfc\x1e\x66\x6a\xb2LAN1"
+            request = (
+                struct.pack(">H", 9 + len(payload))
+                + b"\x02"
+                + socket.inet_aton(target_address[0])
+                + struct.pack(">H", target_address[1])
+                + payload
+            )
+            writer.write(request)
+            await writer.drain()
+            received, _ = await asyncio.wait_for(
+                asyncio.get_running_loop().sock_recvfrom(target, 2048),
+                2,
+            )
+            self.assertEqual(received, payload)
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+
+if __name__ == "__main__":
+    unittest.main()
