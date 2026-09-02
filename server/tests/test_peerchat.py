@@ -84,6 +84,16 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_oversized_line_is_rejected(self) -> None:
+        reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
+        try:
+            writer.write(b"x" * (self.service.config.limits.peerchat_line_bytes + 1))
+            await writer.drain()
+            self.assertEqual(await asyncio.wait_for(reader.read(1), 2), b"")
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
     async def test_encrypted_two_user_staging_room(self) -> None:
         first = await EncryptedPeerClient.connect(self.port)
         second = await EncryptedPeerClient.connect(self.port)

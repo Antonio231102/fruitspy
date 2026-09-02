@@ -65,7 +65,7 @@ class ServerBrowserServer:
                 header = await reader.readexactly(2)
                 size = struct.unpack(">H", header)[0]
                 LOG.debug("Server Browser frame peer=%s header=%s size=%d", peer, header.hex(), size)
-                if not 3 <= size <= 4096:
+                if not 3 <= size <= self.config.limits.server_browser_frame_bytes:
                     raise ValueError(f"invalid Server Browser frame length: {size}")
                 payload = bytearray()
                 while len(payload) < size - 2:
@@ -175,7 +175,7 @@ class ServerBrowserServer:
             (
                 candidate
                 for candidate in self.state.active_servers(self.config.game.name)
-                if candidate.public_host == host and candidate.public_port == port
+                if candidate.browser_endpoint(self.config.mode) == (host, port)
             ),
             None,
         )
@@ -204,7 +204,7 @@ class ServerBrowserServer:
             (
                 candidate
                 for candidate in self.state.active_servers(self.config.game.name)
-                if candidate.public_host == host and candidate.public_port == port
+                if candidate.browser_endpoint(self.config.mode) == (host, port)
             ),
             None,
         )
@@ -214,13 +214,13 @@ class ServerBrowserServer:
         relay = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         relay.setblocking(False)
         try:
-            await asyncio.get_running_loop().sock_sendto(relay, payload, (host, port))
+            await asyncio.get_running_loop().sock_sendto(relay, payload, server.source)
         finally:
             relay.close()
         LOG.info(
-            "Server Browser relayed message host=%s port=%d bytes=%d",
-            host,
-            port,
+            "Server Browser relayed message browser_endpoint=%s source=%s bytes=%d",
+            (host, port),
+            server.source,
             len(payload),
         )
 
@@ -273,7 +273,7 @@ class ServerBrowserServer:
             flags = HAS_KEYS_FLAG if fields else 0
         if server.keys.get("natneg", "0") != "0":
             flags |= CONNECT_NEGOTIATE_FLAG
-        public_port = server.public_port
+        public_host, public_port = server.browser_endpoint(self.config.mode)
         if public_port != self.config.game.default_query_port:
             flags |= NONSTANDARD_PORT_FLAG
         private_host = server.keys.get("localip0", "")
@@ -285,7 +285,7 @@ class ServerBrowserServer:
             flags |= NONSTANDARD_PRIVATE_PORT_FLAG
 
         output = bytearray((flags,))
-        output.extend(socket.inet_aton(server.public_host))
+        output.extend(socket.inet_aton(public_host))
         if flags & NONSTANDARD_PORT_FLAG:
             output.extend(struct.pack(">H", public_port))
         if flags & PRIVATE_IP_FLAG:

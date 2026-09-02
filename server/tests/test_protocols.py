@@ -7,7 +7,7 @@ from fruitspy.crypto import EnctypeX, gsseckey
 from fruitspy.natneg import MAGIC, NN_CONNECT, NN_INIT, NN_INIT_ACK, NatNegProtocol
 from fruitspy.server_browser import ServerBrowserServer
 from fruitspy.state import ServerState
-from tests.helpers import test_config
+from tests.helpers import internet_test_config, test_config
 
 
 def server_browser_request(
@@ -86,6 +86,11 @@ class AvailabilityQRTests(unittest.TestCase):
             "FruitNinjaandam",
         )
 
+    def test_oversized_qr_packet_is_rejected(self) -> None:
+        packet = b"\x09" + b"x" * self.config.limits.qr_packet_bytes
+        with self.assertRaisesRegex(ValueError, "exceeds configured limit"):
+            self.protocol.handle_datagram(packet, ("10.0.0.10", 30123))
+
 
 class ServerBrowserTests(unittest.TestCase):
     def test_registered_host_is_encrypted_into_server_list(self) -> None:
@@ -120,6 +125,36 @@ class ServerBrowserTests(unittest.TestCase):
         self.assertIn(b"2\x00", body)
         self.assertIn(b"openstaging\x00", body)
         self.assertTrue(body.endswith(b"\x00\xff\xff\xff\xff"))
+
+    def test_internet_profile_advertises_observed_public_port(self) -> None:
+        config = internet_test_config()
+        state = ServerState(120, 60)
+        source = ("198.51.100.10", 30123)
+        state.report_server(
+            source,
+            b"INET",
+            {
+                "gamename": "FruitNinjaand",
+                "hostname": "Internet Host",
+                "hostport": "6500",
+                "localip0": "10.0.0.10",
+                "localport": "6500",
+                "natneg": "1",
+            },
+        )
+        state.register_server(source)
+        challenge = b"INTERNET"
+        response = ServerBrowserServer(config, state).handle_request(
+            server_browser_request(challenge, ""),
+            "198.51.100.20",
+        )
+        self.assertIsNotNone(response)
+        assert response is not None
+        body = decrypt_server_browser(response, challenge)
+        entry = body[8:]
+        self.assertTrue(entry[0] & 16)
+        self.assertEqual(entry[1:5], socket.inet_aton(source[0]))
+        self.assertEqual(struct.unpack_from(">H", entry, 5)[0], source[1])
 
     def test_automatch_game_alias_is_accepted(self) -> None:
         config = test_config()
@@ -159,6 +194,13 @@ class NatNegTests(unittest.TestCase):
         self.assertEqual(by_destination[first_addr][12:16], socket.inet_aton(second_addr[0]))
         self.assertEqual(struct.unpack(">H", by_destination[first_addr][16:18])[0], second_addr[1])
         self.assertEqual(by_destination[second_addr][12:16], socket.inet_aton(first_addr[0]))
+
+    def test_oversized_natneg_packet_is_rejected(self) -> None:
+        config = test_config()
+        protocol = NatNegProtocol(config, ServerState(120, 60))
+        packet = MAGIC + b"\x00" * (config.limits.natneg_packet_bytes - len(MAGIC) + 1)
+        with self.assertRaisesRegex(ValueError, "exceeds configured limit"):
+            protocol.handle_datagram(packet, ("10.0.0.10", 40000))
 
 
 if __name__ == "__main__":

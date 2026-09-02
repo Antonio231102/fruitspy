@@ -1,7 +1,7 @@
 {
-  "mode": "lan",
+  "mode": "internet",
   "bind_host": "0.0.0.0",
-  "advertise_host": "auto",
+  "advertise_host": "games.example.net",
   "game": {
     "name": "FruitNinjaand",
     "secret_key": "nNfhSl",

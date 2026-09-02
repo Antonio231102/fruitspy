@@ -1,9 +1,15 @@
+from argparse import ArgumentTypeError
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 
-from patch_apk import GAMESPY_HOSTS, NATNEG_RESOLVER_PATCHES, patch_apk
+from patch_apk import (
+    GAMESPY_HOSTS,
+    NATNEG_RESOLVER_PATCHES,
+    parse_server_host,
+    patch_apk,
+)
 
 
 def library_fixture(abi: str) -> bytes:
@@ -20,6 +26,14 @@ def library_fixture(abi: str) -> bytes:
 
 
 class ApkPatchTests(unittest.TestCase):
+    def test_server_host_accepts_ipv4_and_short_dns_names(self) -> None:
+        self.assertEqual(parse_server_host("192.168.100.2"), "192.168.100.2")
+        self.assertEqual(parse_server_host("Games.Example.Net."), "games.example.net")
+        with self.assertRaises(ArgumentTypeError):
+            parse_server_host("this-name-is-too-long.example.net")
+        with self.assertRaises(ArgumentTypeError):
+            parse_server_host("bad_name.example")
+
     def test_only_requested_abis_and_signatures_change(self) -> None:
         libraries = {abi: library_fixture(abi) for abi in ("armeabi-v7a", "x86")}
         with tempfile.TemporaryDirectory() as directory:

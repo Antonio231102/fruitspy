@@ -60,6 +60,8 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
             self.transport.sendto(response, addr)
 
     def handle_datagram(self, data: bytes, addr: Address) -> bytes | None:
+        if len(data) > self.config.limits.qr_packet_bytes:
+            raise ValueError("QR packet exceeds configured limit")
         if len(data) < 1:
             raise ValueError("empty packet")
         packet_type = data[0]
@@ -120,5 +122,9 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
             LOG.warning("invalid QR challenge response from %s", addr)
             return None
         self.state.register_server(addr)
-        LOG.info("QR server registered source=%s hostport=%d", addr, server.public_port)
+        LOG.info(
+            "QR server registered source=%s browser_endpoint=%s",
+            addr,
+            server.browser_endpoint(self.config.mode),
+        )
         return QR_MAGIC + bytes((PACKET_CLIENT_REGISTERED,)) + server.instance_key

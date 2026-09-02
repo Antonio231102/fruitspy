@@ -9,7 +9,7 @@ from fruitspy.natneg import MAGIC, NN_CONNECT, NN_INIT, NatNegProtocol
 from fruitspy.peerchat import PeerChatServer
 from fruitspy.server_browser import ServerBrowserServer
 from fruitspy.state import ServerState
-from tests.helpers import test_config
+from tests.helpers import internet_test_config, test_config
 from tests.test_peerchat import EncryptedPeerClient
 from tests.test_protocols import (
     decrypt_server_browser,
@@ -249,6 +249,58 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
                 2,
             )
             self.assertEqual(received, payload)
+        finally:
+            writer.close()
+            await writer.wait_closed()
+
+    async def test_internet_relay_targets_observed_qr_endpoint(self) -> None:
+        target = self.udp_socket()
+        target_address = target.getsockname()
+        state = ServerState(120, 60)
+        state.report_server(
+            target_address,
+            b"INET",
+            {
+                "gamename": "FruitNinjaandam",
+                "hostport": "6500",
+                "localip0": "10.0.0.10",
+                "localport": "6500",
+            },
+        )
+        state.register_server(target_address)
+        service = ServerBrowserServer(internet_test_config(), state)
+        listener = await asyncio.start_server(service.handle, "127.0.0.1", 0)
+        port = listener.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        try:
+            payload = b"\xfd\xfc\x1e\x66\x6a\xb2INET"
+            request = (
+                struct.pack(">H", 9 + len(payload))
+                + b"\x02"
+                + socket.inet_aton(target_address[0])
+                + struct.pack(">H", target_address[1])
+                + payload
+            )
+            writer.write(request)
+            await writer.drain()
+            received, _ = await asyncio.wait_for(
+                asyncio.get_running_loop().sock_recvfrom(target, 2048),
+                2,
+            )
+            self.assertEqual(received, payload)
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            listener.close()
+            await listener.wait_closed()
+
+    async def test_oversized_server_browser_frame_is_rejected(self) -> None:
+        reader, writer = await asyncio.open_connection("127.0.0.1", self.browser_port)
+        try:
+            oversized = self.config.limits.server_browser_frame_bytes + 1
+            writer.write(struct.pack(">H", oversized))
+            await writer.drain()
+            self.assertEqual(await asyncio.wait_for(reader.read(1), 2), b"")
         finally:
             writer.close()
             await writer.wait_closed()

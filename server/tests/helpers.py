@@ -1,8 +1,17 @@
-from fruitspy.config import GameConfig, PortConfig, ServerConfig, TimeoutConfig
+from dataclasses import replace
+
+from fruitspy.config import (
+    GameConfig,
+    LimitConfig,
+    PortConfig,
+    ServerConfig,
+    TimeoutConfig,
+)
 
 
 def test_config() -> ServerConfig:
     return ServerConfig(
+        mode="lan",
         bind_host="127.0.0.1",
         advertise_host="127.0.0.1",
         game=GameConfig(
@@ -22,4 +31,18 @@ def test_config() -> ServerConfig:
             reported_server_seconds=120,
             nat_session_seconds=60,
         ),
+        limits=LimitConfig(
+            peerchat_line_bytes=4096,
+            server_browser_frame_bytes=4096,
+            qr_packet_bytes=4096,
+            natneg_packet_bytes=512,
+        ),
+    )
+
+
+def internet_test_config() -> ServerConfig:
+    return replace(
+        test_config(),
+        mode="internet",
+        advertise_host="games.example.net",
     )

@@ -49,6 +49,8 @@ class PeerChatServer:
             await client.run()
         except (ConnectionError, asyncio.IncompleteReadError):
             pass
+        except ValueError as error:
+            LOG.warning("PeerChat request rejected from %s: %s", client.host, error)
         finally:
             await client.disconnect("Client exited")
 
@@ -99,9 +101,13 @@ class PeerChatClient:
             while b"\n" in self._plain_buffer:
                 raw, _, remaining = self._plain_buffer.partition(b"\n")
                 self._plain_buffer = bytearray(remaining)
+                if len(raw) > self.server.config.limits.peerchat_line_bytes:
+                    raise ValueError("PeerChat line exceeds configured limit")
                 line = raw.rstrip(b"\r").decode("utf-8", "replace")
                 if line:
                     await self.command(line)
+            if len(self._plain_buffer) > self.server.config.limits.peerchat_line_bytes:
+                raise ValueError("PeerChat line exceeds configured limit")
 
     async def send(self, line: str, *, plaintext: bool = False) -> None:
         if self.closed:

@@ -44,6 +44,8 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 self.transport.sendto(response, destination)
 
     def handle_datagram(self, data: bytes, addr: Address) -> list[tuple[bytes, Address]]:
+        if len(data) > self.config.limits.natneg_packet_bytes:
+            raise ValueError("NatNeg packet exceeds configured limit")
         if len(data) < 12 or data[:6] != MAGIC:
             raise ValueError("invalid NatNeg header")
         version = data[6]

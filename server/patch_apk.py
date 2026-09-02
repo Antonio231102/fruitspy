@@ -36,14 +36,38 @@ NATNEG_RESOLVER_PATCHES = {
 SIGNATURE_SUFFIXES = (".MF", ".SF", ".RSA", ".DSA", ".EC")
 
 
-def parse_ipv4(value: str) -> str:
+def parse_server_host(value: str) -> str:
     try:
         address = ipaddress.ip_address(value)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
-    if address.version != 4:
-        raise argparse.ArgumentTypeError("the native patch requires an IPv4 address")
-    return str(address)
+    except ValueError:
+        address = None
+    if address is not None:
+        if address.version != 4:
+            raise argparse.ArgumentTypeError("the native patch requires an IPv4 address or DNS name")
+        return str(address)
+
+    hostname = value.rstrip(".").lower()
+    allowed = frozenset("abcdefghijklmnopqrstuvwxyz0123456789-")
+    labels = hostname.split(".")
+    if (
+        not hostname
+        or not hostname.isascii()
+        or any(
+            not label
+            or len(label) > 63
+            or label[0] == "-"
+            or label[-1] == "-"
+            or any(character not in allowed for character in label)
+            for label in labels
+        )
+    ):
+        raise argparse.ArgumentTypeError("invalid server DNS name")
+    shortest_literal = min(len(original) for original in GAMESPY_HOSTS)
+    if len(hostname.encode("ascii")) >= shortest_literal:
+        raise argparse.ArgumentTypeError(
+            f"server DNS name must be shorter than {shortest_literal} ASCII bytes"
+        )
+    return hostname
 
 
 def is_signature_entry(name: str) -> bool:
@@ -134,11 +158,11 @@ def patch_apk(source: Path, output: Path, server_host: str) -> list[dict[str, ob
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Patch Fruit Ninja 1.7.6 GameSpy hostnames for a LAN server."
+        description="Patch Fruit Ninja 1.7.6 GameSpy hostnames for a LAN or Internet server."
     )
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--server-host", required=True, type=parse_ipv4)
+    parser.add_argument("--server-host", required=True, type=parse_server_host)
     parser.add_argument("--report", type=Path)
     args = parser.parse_args()
 

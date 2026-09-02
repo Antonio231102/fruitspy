@@ -16,15 +16,16 @@ class ReportedServer:
     last_seen: float = field(default_factory=time.monotonic)
 
     @property
-    def public_host(self) -> str:
-        return self.source[0]
-
-    @property
-    def public_port(self) -> int:
+    def reported_game_port(self) -> int:
         value = self.keys.get("hostport") or self.keys.get("localport")
         if value and value.isdecimal():
             return int(value)
         return self.source[1]
+
+    def browser_endpoint(self, mode: str) -> Address:
+        if mode == "internet":
+            return self.source
+        return self.source[0], self.reported_game_port
 
 
 @dataclass(slots=True)
