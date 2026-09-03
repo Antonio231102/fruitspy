@@ -174,6 +174,29 @@ class ServerBrowserTests(unittest.TestCase):
         )
 
 
+    def test_invalid_advertised_address_fields_do_not_break_discovery(self) -> None:
+        config = test_config()
+        state = ServerState(120, 60)
+        source = ("10.0.0.10", 40000)
+        state.report_server(
+            source,
+            b"BAD1",
+            {
+                "gamename": "FruitNinjaand",
+                "hostport": "99999",
+                "localip0": "not-an-ip-address",
+                "localport": "99999",
+            },
+        )
+        state.register_server(source)
+        response = ServerBrowserServer(config, state).handle_request(
+            server_browser_request(b"BADFIELD", ""),
+            "10.0.0.20",
+        )
+
+        self.assertIsNotNone(response)
+
+
 class NatNegTests(unittest.TestCase):
     def test_two_clients_are_paired_by_cookie(self) -> None:
         protocol = NatNegProtocol(test_config(), ServerState(120, 60))
@@ -200,6 +223,13 @@ class NatNegTests(unittest.TestCase):
         protocol = NatNegProtocol(config, ServerState(120, 60))
         packet = MAGIC + b"\x00" * (config.limits.natneg_packet_bytes - len(MAGIC) + 1)
         with self.assertRaisesRegex(ValueError, "exceeds configured limit"):
+            protocol.handle_datagram(packet, ("10.0.0.10", 40000))
+
+    def test_invalid_natneg_client_index_is_rejected(self) -> None:
+        protocol = NatNegProtocol(test_config(), ServerState(120, 60))
+        packet = MAGIC + bytes((3, NN_INIT)) + b"BAD1" + bytes((0, 2, 1)) + b"\x00" * 6
+
+        with self.assertRaisesRegex(ValueError, "client index"):
             protocol.handle_datagram(packet, ("10.0.0.10", 40000))
 
 

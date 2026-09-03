@@ -19,7 +19,9 @@ class ReportedServer:
     def reported_game_port(self) -> int:
         value = self.keys.get("hostport") or self.keys.get("localport")
         if value and value.isdecimal():
-            return int(value)
+            port = int(value)
+            if 1 <= port <= 65535:
+                return port
         return self.source[1]
 
     def browser_endpoint(self, mode: str) -> Address:
@@ -45,9 +47,17 @@ class NatSession:
 
 
 class ServerState:
-    def __init__(self, reported_server_ttl: int, nat_session_ttl: int) -> None:
+    def __init__(
+        self,
+        reported_server_ttl: int,
+        nat_session_ttl: int,
+        max_reported_servers: int = 2048,
+        max_nat_sessions: int = 4096,
+    ) -> None:
         self.reported_server_ttl = reported_server_ttl
         self.nat_session_ttl = nat_session_ttl
+        self.max_reported_servers = max_reported_servers
+        self.max_nat_sessions = max_nat_sessions
         self.reported_servers: dict[Address, ReportedServer] = {}
         self.nat_sessions: dict[bytes, NatSession] = {}
 
@@ -59,6 +69,9 @@ class ServerState:
     ) -> ReportedServer:
         server = self.reported_servers.get(source)
         if server is None:
+            self.expire()
+            if len(self.reported_servers) >= self.max_reported_servers:
+                raise ValueError("reported server capacity reached")
             server = ReportedServer(source=source, instance_key=instance_key)
             self.reported_servers[source] = server
         server.instance_key = instance_key
@@ -93,6 +106,9 @@ class ServerState:
     ) -> NatSession:
         session = self.nat_sessions.get(cookie)
         if session is None:
+            self.expire()
+            if len(self.nat_sessions) >= self.max_nat_sessions:
+                raise ValueError("NatNeg session capacity reached")
             session = NatSession(cookie=cookie)
             self.nat_sessions[cookie] = session
         session.peers[client_index] = NatPeer(

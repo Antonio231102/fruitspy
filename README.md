@@ -26,7 +26,34 @@ python -m fruitspy --config config.json
 
 For protocol diagnostics, add `--verbose`. `config.json` is the dependency-free `lan` profile: it binds all service sockets and automatically selects the machine's local IPv4 address. Firewalls must allow the four ports listed above.
 
-`config.internet.example.json` is the initial direct-connect Internet profile. Copy it to a machine-local configuration, replace `games.example.net` with the public DNS name used by the patched clients, and expose TCP 6667/28910 plus UDP 27900/27901. Do not expose the service publicly yet: connection admission and per-source rate limiting remain roadmap work.
+`config.internet.example.json` is the guarded direct-connect Internet profile. Copy it to the ignored `config.local.json`, replace `games.example.net` with the public DNS name used by the patched clients, and expose TCP 6667/28910 plus UDP 27900/27901. Start it with:
+
+```text
+python -m fruitspy --config config.local.json
+```
+
+Do not expose a development checkout directly to the public Internet. Use an OS firewall that permits only the four protocol ports, run the process as an unprivileged account under a supervisor, and retain minimal logs. A controlled two-network alpha test is the next deployment milestone.
+
+### Internet admission controls
+
+Both profiles use the checked-in safety limits; Internet operators should tune them only from measured traffic:
+
+| Setting | Default | Behavior |
+| --- | ---: | --- |
+| `peerchat_connections` | 256 | Maximum concurrent PeerChat TCP connections |
+| `server_browser_connections` | 128 | Maximum concurrent Server Browser TCP connections |
+| `connections_per_source` | 16 | Per-source cap, enforced independently by each TCP service |
+| `udp_packets_per_second` | 120 | QR2 and NatNeg token refill rate per source IPv4 address |
+| `udp_burst` | 240 | Short UDP burst permitted by each service |
+| `udp_tracked_sources` | 4096 | Hard bound on each UDP rate-limit table |
+| `reported_servers` | 2048 | Hard bound on QR2 server registrations |
+| `nat_sessions` | 4096 | Hard bound on concurrent NatNeg cookie sessions |
+| `peerchat_handshake_seconds` | 15 | Absolute deadline for PeerChat registration |
+| `peerchat_idle_seconds` | 360 | Post-registration PeerChat idle deadline; longer than the observed client ping interval |
+| `server_browser_idle_seconds` | 30 | Header and frame completion deadline |
+| `rate_limit_entry_seconds` | 120 | Idle lifetime for UDP source accounting |
+
+Rejected connections and protocol events use stable `service=... event=...` fields. In `internet` mode, verbose logs omit PeerChat message bodies, nicknames, quit reasons, and raw Server Browser frames. Source addresses remain available for abuse diagnosis and should be retained only as long as operationally necessary.
 
 ## Patch a locally owned APK
 
@@ -47,11 +74,11 @@ cd server
 python -m unittest
 ```
 
-The suite covers cryptography, PeerChat, QR2 registration, server discovery, NatNeg pairing, and deterministic APK patching.
+The suite covers cryptography, configuration validation, admission controls, connection deadlines, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, and deterministic APK patching.
 
 ## Online play
 
-LAN support remains the compatibility baseline. Initial online development now includes explicit `lan` and `internet` profiles, observed public-port publication for hosts behind NAT, bounded protocol frames, and IPv4-or-DNS APK patch targets. Public deployment, rate limiting, relay fallback, abuse controls, and release work are tracked in [ROADMAP.md](ROADMAP.md).
+LAN support remains the compatibility baseline. Initial online development now includes explicit `lan` and `internet` profiles, observed public-port publication for hosts behind NAT, bounded protocol frames, TCP admission limits, bounded per-source UDP token buckets, idle connection deadlines, privacy-aware Internet diagnostics, and IPv4-or-DNS APK patch targets. Process supervision, firewall deployment, cross-network validation, relay fallback, and broader abuse controls are tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Release status
 

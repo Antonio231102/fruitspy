@@ -7,6 +7,7 @@ import string
 import struct
 
 from .config import ServerConfig
+from .admission import SourceRateLimiter
 from .crypto import gsseckey
 from .state import Address, ServerState
 
@@ -46,11 +47,20 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         self.config = config
         self.state = state
         self.transport: asyncio.DatagramTransport | None = None
+        self.rate_limiter = SourceRateLimiter(
+            config.limits.udp_packets_per_second,
+            config.limits.udp_burst,
+            config.limits.udp_tracked_sources,
+            config.timeouts.rate_limit_entry_seconds,
+        )
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
 
     def datagram_received(self, data: bytes, addr: Address) -> None:
+        if not self.rate_limiter.allow(addr[0]):
+            LOG.debug("QR rate limit source=%s", addr[0])
+            return
         try:
             response = self.handle_datagram(data, addr)
         except (ValueError, UnicodeError) as error:
@@ -70,7 +80,19 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
                 raise ValueError("short availability packet")
             game_name, _ = _read_cstring(data, 5)
             status = 0 if game_name == self.config.game.name else 1
-            LOG.info("availability game=%s status=%d source=%s", game_name, status, addr)
+            if self.config.mode == "internet":
+                LOG.info(
+                    "service=qr event=availability source=%s accepted=%s",
+                    addr,
+                    status == 0,
+                )
+            else:
+                LOG.info(
+                    "availability game=%s status=%d source=%s",
+                    game_name,
+                    status,
+                    addr,
+                )
             return availability_response(status)
         if packet_type == PACKET_HEARTBEAT:
             return self._heartbeat(data, addr)
@@ -88,13 +110,16 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         instance_key = data[1:5]
         keys = parse_qr_server_keys(data)
         if keys.get("statechanged") == "2":
-            self.state.report_server(addr, instance_key, keys)
+            self.state.reported_servers.pop(addr, None)
             LOG.info("QR server removed source=%s", addr)
             return None
         game_name = keys.get("gamename")
         accepted_games = {self.config.game.name, f"{self.config.game.name}am"}
         if game_name not in accepted_games:
-            LOG.warning("QR heartbeat for unknown game %r from %s", game_name, addr)
+            if self.config.mode == "internet":
+                LOG.warning("service=qr event=game_rejected source=%s", addr)
+            else:
+                LOG.warning("QR heartbeat for unknown game %r from %s", game_name, addr)
             return None
         server = self.state.report_server(addr, instance_key, keys)
         if server.registered:

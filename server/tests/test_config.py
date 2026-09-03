@@ -40,6 +40,24 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "natneg_packet_bytes"):
                 load_config(invalid)
 
+    def test_admission_limits_and_deadlines_are_validated(self) -> None:
+        source = self.server_root / "config.internet.example.json"
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["limits"]["connections_per_source"] = 300
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "connections_per_source"):
+                load_config(invalid)
+
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["timeouts"]["peerchat_handshake_seconds"] = 0
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "peerchat_handshake_seconds"):
+                load_config(invalid)
+
 
 if __name__ == "__main__":
     unittest.main()

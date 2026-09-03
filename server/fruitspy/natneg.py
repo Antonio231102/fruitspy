@@ -5,6 +5,7 @@ import logging
 import socket
 import struct
 
+from .admission import SourceRateLimiter
 from .config import ServerConfig
 from .state import Address, ServerState
 
@@ -29,11 +30,20 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         self.config = config
         self.state = state
         self.transport: asyncio.DatagramTransport | None = None
+        self.rate_limiter = SourceRateLimiter(
+            config.limits.udp_packets_per_second,
+            config.limits.udp_burst,
+            config.limits.udp_tracked_sources,
+            config.timeouts.rate_limit_entry_seconds,
+        )
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
 
     def datagram_received(self, data: bytes, addr: Address) -> None:
+        if not self.rate_limiter.allow(addr[0]):
+            LOG.debug("NatNeg rate limit source=%s", addr[0])
+            return
         try:
             responses = self.handle_datagram(data, addr)
         except (ValueError, OSError) as error:
@@ -55,6 +65,8 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             if len(data) < 14:
                 raise ValueError("short NatNeg init")
             client_index = data[13]
+            if client_index not in (0, 1):
+                raise ValueError(f"invalid NatNeg client index: {client_index}")
             session = self.state.touch_nat_peer(cookie, client_index, addr, version)
             responses = [(self._with_type(data, NN_INIT_ACK), addr)]
             if 0 in session.peers and 1 in session.peers:

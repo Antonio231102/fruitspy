@@ -6,6 +6,7 @@ import secrets
 import string
 from dataclasses import dataclass, field
 
+from .admission import ConnectionAdmission
 from .config import ServerConfig
 from .crypto import PeerChatCipher
 
@@ -41,18 +42,45 @@ class PeerChatServer:
         self.config = config
         self.clients: dict[str, PeerChatClient] = {}
         self.channels: dict[str, ChatChannel] = {}
+        self.admission = ConnectionAdmission(
+            config.limits.peerchat_connections,
+            config.limits.connections_per_source,
+        )
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         client = PeerChatClient(self, reader, writer)
-        LOG.info("PeerChat connect host=%s", client.host)
+        if not self.admission.acquire(client.host):
+            LOG.warning(
+                "service=peerchat event=admission_rejected source=%s",
+                client.host,
+            )
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), 1)
+            except (TimeoutError, ConnectionError):
+                writer.transport.abort()
+            return
+        LOG.info(
+            "service=peerchat event=connected connection=%s source=%s",
+            client.connection_id,
+            client.host,
+        )
         try:
             await client.run()
         except (ConnectionError, asyncio.IncompleteReadError):
             pass
         except ValueError as error:
-            LOG.warning("PeerChat request rejected from %s: %s", client.host, error)
+            LOG.warning(
+                "service=peerchat event=request_rejected connection=%s source=%s error=%s",
+                client.connection_id,
+                client.host,
+                error,
+            )
         finally:
-            await client.disconnect("Client exited")
+            try:
+                await client.disconnect("Client exited")
+            finally:
+                self.admission.release(client.host)
 
     def channel(self, name: str) -> ChatChannel:
         folded = name.casefold()
@@ -85,14 +113,31 @@ class PeerChatClient:
         self.decryptor: PeerChatCipher | None = None
         self.encryptor: PeerChatCipher | None = None
         self._plain_buffer = bytearray()
+        self.connection_id = secrets.token_hex(8)
+        self._handshake_deadline = (
+            asyncio.get_running_loop().time()
+            + server.config.timeouts.peerchat_handshake_seconds
+        )
 
     @property
     def prefix(self) -> str:
         return f"{self.nick or '*'}!{self.user or 'user'}@{self.host}"
 
     async def run(self) -> None:
+        loop = asyncio.get_running_loop()
         while not self.reader.at_eof():
-            data = await self.reader.read(4096)
+            if self.welcomed:
+                timeout = self.server.config.timeouts.peerchat_idle_seconds
+                timeout_name = "idle"
+            else:
+                timeout = self._handshake_deadline - loop.time()
+                timeout_name = "handshake"
+                if timeout <= 0:
+                    raise ValueError("PeerChat handshake deadline exceeded")
+            try:
+                data = await asyncio.wait_for(self.reader.read(4096), timeout)
+            except TimeoutError as error:
+                raise ValueError(f"PeerChat {timeout_name} deadline exceeded") from error
             if not data:
                 return
             if self.decryptor is not None:
@@ -113,7 +158,19 @@ class PeerChatClient:
         if self.closed:
             return
         data = (line + "\r\n").encode("utf-8")
-        LOG.debug("PeerChat S->C host=%s nick=%s line=%s", self.host, self.nick or "*", line)
+        if self.server.config.mode == "internet":
+            LOG.debug(
+                "service=peerchat event=send connection=%s bytes=%d",
+                self.connection_id,
+                len(data),
+            )
+        else:
+            LOG.debug(
+                "PeerChat S->C host=%s nick=%s line=%s",
+                self.host,
+                self.nick or "*",
+                line,
+            )
         if self.encryptor is not None and not plaintext:
             data = self.encryptor.transform(data)
         self.writer.write(data)
@@ -123,9 +180,22 @@ class PeerChatClient:
         await self.send(f":s {code:03d} {self.nick or '*'} {text}", plaintext=plaintext)
 
     async def command(self, line: str) -> None:
-        LOG.debug("PeerChat C->S host=%s nick=%s line=%s", self.host, self.nick or "*", line)
         command, _, params = line.partition(" ")
         name = command.upper()
+        if self.server.config.mode == "internet":
+            LOG.debug(
+                "service=peerchat event=receive connection=%s command=%s bytes=%d",
+                self.connection_id,
+                name,
+                len(line.encode("utf-8")),
+            )
+        else:
+            LOG.debug(
+                "PeerChat C->S host=%s nick=%s line=%s",
+                self.host,
+                self.nick or "*",
+                line,
+            )
         handler = getattr(self, f"cmd_{name.lower()}", None)
         if handler is None:
             await self.numeric(421, f"{name} :Unknown command")
@@ -454,4 +524,16 @@ class PeerChatClient:
             await asyncio.wait_for(self.writer.wait_closed(), 1)
         except (TimeoutError, ConnectionError):
             self.writer.transport.abort()
-        LOG.info("PeerChat disconnect nick=%s host=%s reason=%s", self.nick, self.host, reason)
+        if self.server.config.mode == "internet":
+            LOG.info(
+                "service=peerchat event=disconnected connection=%s source=%s",
+                self.connection_id,
+                self.host,
+            )
+        else:
+            LOG.info(
+                "PeerChat disconnect nick=%s host=%s reason=%s",
+                self.nick,
+                self.host,
+                reason,
+            )

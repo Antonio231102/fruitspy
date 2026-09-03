@@ -30,12 +30,24 @@ class LimitConfig:
     server_browser_frame_bytes: int
     qr_packet_bytes: int
     natneg_packet_bytes: int
+    peerchat_connections: int
+    server_browser_connections: int
+    connections_per_source: int
+    udp_packets_per_second: int
+    udp_burst: int
+    udp_tracked_sources: int
+    reported_servers: int
+    nat_sessions: int
+
 
 @dataclass(frozen=True, slots=True)
 class TimeoutConfig:
     reported_server_seconds: int
     nat_session_seconds: int
-
+    peerchat_handshake_seconds: int
+    peerchat_idle_seconds: int
+    server_browser_idle_seconds: int
+    rate_limit_entry_seconds: int
 
 @dataclass(frozen=True, slots=True)
 class ServerConfig:
@@ -96,6 +108,35 @@ def load_config(path: str | Path) -> ServerConfig:
         raise ValueError("qr_packet_bytes must be between 64 and 65507")
     if not 21 <= limits.natneg_packet_bytes <= 65507:
         raise ValueError("natneg_packet_bytes must be between 21 and 65507")
+    if not 1 <= limits.peerchat_connections <= 65535:
+        raise ValueError("peerchat_connections must be between 1 and 65535")
+    if not 1 <= limits.server_browser_connections <= 65535:
+        raise ValueError("server_browser_connections must be between 1 and 65535")
+    if not 1 <= limits.connections_per_source <= min(
+        limits.peerchat_connections,
+        limits.server_browser_connections,
+    ):
+        raise ValueError("connections_per_source must fit the configured connection limits")
+    if not 1 <= limits.udp_packets_per_second <= 65535:
+        raise ValueError("udp_packets_per_second must be between 1 and 65535")
+    if not limits.udp_packets_per_second <= limits.udp_burst <= 65535:
+        raise ValueError("udp_burst must be at least udp_packets_per_second")
+    if not 1 <= limits.udp_tracked_sources <= 1_000_000:
+        raise ValueError("udp_tracked_sources must be between 1 and 1000000")
+    if not 1 <= limits.reported_servers <= 1_000_000:
+        raise ValueError("reported_servers must be between 1 and 1000000")
+    if not 1 <= limits.nat_sessions <= 1_000_000:
+        raise ValueError("nat_sessions must be between 1 and 1000000")
+    for name, value in (
+        ("reported_server_seconds", timeouts.reported_server_seconds),
+        ("nat_session_seconds", timeouts.nat_session_seconds),
+        ("peerchat_handshake_seconds", timeouts.peerchat_handshake_seconds),
+        ("peerchat_idle_seconds", timeouts.peerchat_idle_seconds),
+        ("server_browser_idle_seconds", timeouts.server_browser_idle_seconds),
+        ("rate_limit_entry_seconds", timeouts.rate_limit_entry_seconds),
+    ):
+        if not 1 <= value <= 86400:
+            raise ValueError(f"{name} must be between 1 and 86400")
     return ServerConfig(
         mode=mode,
         bind_host=raw["bind_host"],

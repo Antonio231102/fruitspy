@@ -2,6 +2,7 @@ import asyncio
 import socket
 import struct
 import unittest
+from dataclasses import replace
 
 from fruitspy.availability_qr import AvailabilityQRProtocol
 from fruitspy.crypto import gsseckey
@@ -304,6 +305,107 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         finally:
             writer.close()
             await writer.wait_closed()
+
+    async def test_peerchat_handshake_deadline_closes_idle_connection(self) -> None:
+        config = replace(
+            self.config,
+            timeouts=replace(
+                self.config.timeouts,
+                peerchat_handshake_seconds=1,
+            ),
+        )
+        service = PeerChatServer(config)
+        listener = await asyncio.start_server(service.handle, "127.0.0.1", 0)
+        port = listener.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        try:
+            self.assertEqual(await asyncio.wait_for(reader.read(1), 2), b"")
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            listener.close()
+            await listener.wait_closed()
+
+    async def test_server_browser_idle_deadline_closes_connection(self) -> None:
+        config = replace(
+            self.config,
+            timeouts=replace(
+                self.config.timeouts,
+                server_browser_idle_seconds=1,
+            ),
+        )
+        service = ServerBrowserServer(config, self.state)
+        listener = await asyncio.start_server(service.handle, "127.0.0.1", 0)
+        port = listener.sockets[0].getsockname()[1]
+        reader, writer = await asyncio.open_connection("127.0.0.1", port)
+        try:
+            self.assertEqual(await asyncio.wait_for(reader.read(1), 2), b"")
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            listener.close()
+            await listener.wait_closed()
+
+    async def test_peerchat_connection_limit_rejects_excess_client(self) -> None:
+        config = replace(
+            self.config,
+            limits=replace(
+                self.config.limits,
+                peerchat_connections=1,
+                connections_per_source=1,
+            ),
+        )
+        service = PeerChatServer(config)
+        listener = await asyncio.start_server(service.handle, "127.0.0.1", 0)
+        port = listener.sockets[0].getsockname()[1]
+        first_reader, first_writer = await asyncio.open_connection("127.0.0.1", port)
+        second_reader = None
+        second_writer = None
+        try:
+            await asyncio.sleep(0)
+            second_reader, second_writer = await asyncio.open_connection(
+                "127.0.0.1",
+                port,
+            )
+            self.assertEqual(
+                await asyncio.wait_for(second_reader.read(1), 1),
+                b"",
+            )
+            self.assertFalse(first_reader.at_eof())
+        finally:
+            if second_writer is not None:
+                second_writer.close()
+                await second_writer.wait_closed()
+            first_writer.close()
+            await first_writer.wait_closed()
+            listener.close()
+            await listener.wait_closed()
+
+    async def test_qr_rate_limit_drops_excess_datagram(self) -> None:
+        config = replace(
+            self.config,
+            limits=replace(
+                self.config.limits,
+                udp_packets_per_second=1,
+                udp_burst=1,
+            ),
+        )
+        loop = asyncio.get_running_loop()
+        transport, _ = await loop.create_datagram_endpoint(
+            lambda: AvailabilityQRProtocol(config, self.state),
+            local_addr=("127.0.0.1", 0),
+        )
+        port = transport.get_extra_info("sockname")[1]
+        client = self.udp_socket()
+        request = b"\x09\x00\x00\x00\x00FruitNinjaand\x00"
+        try:
+            response = await self.exchange_udp(client, request, port)
+            self.assertEqual(response, b"\xfe\xfd\x09" + b"\x00" * 8)
+            await loop.sock_sendto(client, request, ("127.0.0.1", port))
+            with self.assertRaises(TimeoutError):
+                await asyncio.wait_for(loop.sock_recvfrom(client, 2048), 0.2)
+        finally:
+            transport.close()
 
 
 if __name__ == "__main__":

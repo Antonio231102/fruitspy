@@ -7,6 +7,7 @@ import secrets
 import socket
 import struct
 
+from .admission import ConnectionAdmission
 from .config import ServerConfig
 from .crypto import EnctypeX
 from .state import ReportedServer, ServerState
@@ -41,9 +42,15 @@ def _matches_filter(server: ReportedServer, expression: str) -> bool:
         return True
     clauses = re.split(r"\s+(?:and|AND)\s+", expression.strip())
     for clause in clauses:
-        match = re.fullmatch(r"\(?\s*([A-Za-z0-9_]+)\s*=\s*'?([^')]+)'?\s*\)?", clause)
+        match = re.fullmatch(
+            r"\(?\s*([A-Za-z0-9_]+)\s*=\s*'?([^')]+)'?\s*\)?",
+            clause,
+        )
         if match is None:
-            LOG.warning("unsupported Server Browser filter clause: %s", clause)
+            LOG.warning(
+                "unsupported Server Browser filter clause bytes=%d",
+                len(clause.encode("utf-8")),
+            )
             continue
         key, expected = match.groups()
         if server.keys.get(key, "") != expected.strip():
@@ -55,22 +62,68 @@ class ServerBrowserServer:
     def __init__(self, config: ServerConfig, state: ServerState) -> None:
         self.config = config
         self.state = state
+        self.admission = ConnectionAdmission(
+            config.limits.server_browser_connections,
+            config.limits.connections_per_source,
+        )
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         peer = writer.get_extra_info("peername")
+        source = str(peer[0]) if peer else "0.0.0.0"
+        connection_id = secrets.token_hex(8)
+        if not self.admission.acquire(source):
+            LOG.warning(
+                "service=server_browser event=admission_rejected source=%s",
+                source,
+            )
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), 1)
+            except (TimeoutError, ConnectionError):
+                writer.transport.abort()
+            return
         cipher: EnctypeX | None = None
-        LOG.info("Server Browser connect peer=%s", peer)
+        LOG.info(
+            "service=server_browser event=connected connection=%s source=%s",
+            connection_id,
+            source,
+        )
         try:
             while True:
-                header = await reader.readexactly(2)
+                header = await asyncio.wait_for(
+                    reader.readexactly(2),
+                    self.config.timeouts.server_browser_idle_seconds,
+                )
                 size = struct.unpack(">H", header)[0]
-                LOG.debug("Server Browser frame peer=%s header=%s size=%d", peer, header.hex(), size)
+                if self.config.mode == "internet":
+                    LOG.debug(
+                        "service=server_browser event=frame connection=%s bytes=%d",
+                        connection_id,
+                        size,
+                    )
+                else:
+                    LOG.debug(
+                        "Server Browser frame peer=%s header=%s size=%d",
+                        peer,
+                        header.hex(),
+                        size,
+                    )
                 if not 3 <= size <= self.config.limits.server_browser_frame_bytes:
                     raise ValueError(f"invalid Server Browser frame length: {size}")
                 payload = bytearray()
+                frame_deadline = (
+                    asyncio.get_running_loop().time()
+                    + self.config.timeouts.server_browser_idle_seconds
+                )
                 while len(payload) < size - 2:
+                    remaining = frame_deadline - asyncio.get_running_loop().time()
+                    if remaining <= 0:
+                        raise ValueError("Server Browser frame deadline exceeded")
                     try:
-                        chunk = await asyncio.wait_for(reader.read(size - 2 - len(payload)), 0.1)
+                        chunk = await asyncio.wait_for(
+                            reader.read(size - 2 - len(payload)),
+                            min(0.1, remaining),
+                        )
                     except TimeoutError:
                         break
                     if not chunk:
@@ -79,18 +132,19 @@ class ServerBrowserServer:
                 packet = header + payload
                 if len(packet) != size:
                     LOG.info(
-                        "Server Browser length compatibility peer=%s declared=%d received=%d",
-                        peer,
+                        "service=server_browser event=length_compatibility "
+                        "connection=%s declared=%d received=%d",
+                        connection_id,
                         size,
                         len(packet),
                     )
-                LOG.debug("Server Browser packet peer=%s data=%s", peer, packet.hex())
+                if self.config.mode == "lan":
+                    LOG.debug("Server Browser packet peer=%s data=%s", peer, packet.hex())
+                if len(packet) < 3:
+                    raise ValueError("truncated Server Browser frame")
                 request_type = packet[2]
                 if request_type == SERVER_LIST_REQUEST:
-                    response, cipher = self._handle_list_request(
-                        packet,
-                        str(peer[0]) if peer else "127.0.0.1",
-                    )
+                    response, cipher = self._handle_list_request(packet, source)
                 elif request_type == SERVER_INFO_REQUEST and cipher is not None:
                     response = self._handle_info_request(packet, cipher)
                 elif request_type == SEND_MESSAGE_REQUEST:
@@ -99,18 +153,51 @@ class ServerBrowserServer:
                 else:
                     response = None
                 if response is None:
-                    LOG.info("Server Browser ignored frame peer=%s data=%s", peer, packet.hex())
+                    if self.config.mode == "internet":
+                        LOG.info(
+                            "service=server_browser event=frame_ignored "
+                            "connection=%s type=%d bytes=%d",
+                            connection_id,
+                            request_type,
+                            len(packet),
+                        )
+                    else:
+                        LOG.info(
+                            "Server Browser ignored frame peer=%s data=%s",
+                            peer,
+                            packet.hex(),
+                        )
                 else:
                     writer.write(response)
                     await writer.drain()
         except (asyncio.IncompleteReadError, ConnectionError):
             pass
+        except TimeoutError:
+            LOG.info(
+                "service=server_browser event=idle_timeout connection=%s source=%s",
+                connection_id,
+                source,
+            )
         except ValueError as error:
-            LOG.warning("Server Browser request rejected from %s: %s", peer, error)
+            LOG.warning(
+                "service=server_browser event=request_rejected "
+                "connection=%s source=%s error=%s",
+                connection_id,
+                source,
+                error,
+            )
         finally:
             writer.close()
-            LOG.info("Server Browser disconnect peer=%s", peer)
-            await writer.wait_closed()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), 1)
+            except (TimeoutError, ConnectionError):
+                writer.transport.abort()
+            self.admission.release(source)
+            LOG.info(
+                "service=server_browser event=disconnected connection=%s source=%s",
+                connection_id,
+                source,
+            )
 
     def handle_request(self, packet: bytes, source_ip: str) -> bytes | None:
         response, _ = self._handle_list_request(packet, source_ip)
@@ -146,10 +233,10 @@ class ServerBrowserServer:
         accepted_query_games = {self.config.game.name, f"{self.config.game.name}am"}
         if query_game not in accepted_query_games or client_game != self.config.game.name:
             LOG.warning(
-                "Server Browser game mismatch source=%s query=%s client=%s",
+                "Server Browser game mismatch source=%s query_match=%s client_match=%s",
                 source_ip,
-                query_game,
-                client_game,
+                query_game in accepted_query_games,
+                client_game == self.config.game.name,
             )
             return b"Query Error: Invalid gamename or clientname\x00", None
         fields = _field_names(field_list)
@@ -277,10 +364,16 @@ class ServerBrowserServer:
         if public_port != self.config.game.default_query_port:
             flags |= NONSTANDARD_PORT_FLAG
         private_host = server.keys.get("localip0", "")
-        if private_host:
+        try:
+            private_address = socket.inet_aton(private_host) if private_host else None
+        except OSError:
+            private_address = None
+        if private_address is not None:
             flags |= PRIVATE_IP_FLAG
         local_port_text = server.keys.get("localport", "")
         local_port = int(local_port_text) if local_port_text.isdecimal() else public_port
+        if not 1 <= local_port <= 65535:
+            local_port = public_port
         if local_port != self.config.game.default_query_port:
             flags |= NONSTANDARD_PRIVATE_PORT_FLAG
 
@@ -288,8 +381,8 @@ class ServerBrowserServer:
         output.extend(socket.inet_aton(public_host))
         if flags & NONSTANDARD_PORT_FLAG:
             output.extend(struct.pack(">H", public_port))
-        if flags & PRIVATE_IP_FLAG:
-            output.extend(socket.inet_aton(private_host))
+        if private_address is not None:
+            output.extend(private_address)
         if flags & NONSTANDARD_PRIVATE_PORT_FLAG:
             output.extend(struct.pack(">H", local_port))
         if full_rules:

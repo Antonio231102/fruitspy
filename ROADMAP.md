@@ -38,11 +38,12 @@ Online direct-connect foundation is in progress:
 - Implemented explicit `lan` and `internet` configuration profiles.
 - Preserved the reported game port in LAN mode while publishing the server-observed QR2 source port in Internet mode, which is required when a host is behind port-mapping NAT.
 - Routed Server Browser send-message requests to the registered QR2 source endpoint rather than trusting the requested destination.
-- Added configurable size limits for PeerChat lines, Server Browser frames, QR2 datagrams, and NatNeg datagrams.
+- Added strict frame and datagram sizes, total and per-source TCP admission caps, bounded per-source QR2/NatNeg token buckets, and absolute handshake/frame deadlines.
+- Added stable connection identifiers and structured Internet-mode connection events. Internet debug logs omit chat bodies, nicknames, quit reasons, and raw Server Browser frames.
 - Extended the APK patch target to accept a short DNS name or IPv4 address.
-- Added regression coverage for profile validation, observed public-port encoding, online QR2 relay routing, and oversized protocol inputs.
+- Added regression coverage for profile validation, observed public-port encoding, online QR2 relay routing, oversized inputs, admission limits, UDP rate limiting, and idle clients.
 
-Next: connection admission limits, per-source rate limiting, idle handshake deadlines, structured session logging, and a controlled two-network direct-connect test. The Internet profile must not be publicly exposed before those admission controls are complete.
+Next: process supervision, startup health checks, firewall deployment, malformed-input resilience expansion, and a controlled two-network direct-connect test. The Internet profile remains a guarded development profile until that deployment validation succeeds.
 
 ## Phase 1 — Freeze the LAN baseline
 

@@ -20,6 +20,8 @@ async def run_server(config: ServerConfig) -> None:
     state = ServerState(
         reported_server_ttl=config.timeouts.reported_server_seconds,
         nat_session_ttl=config.timeouts.nat_session_seconds,
+        max_reported_servers=config.limits.reported_servers,
+        max_nat_sessions=config.limits.nat_sessions,
     )
     qr_transport, _ = await loop.create_datagram_endpoint(
         lambda: AvailabilityQRProtocol(config, state),
@@ -70,7 +72,7 @@ async def run_server(config: ServerConfig) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="fruitspy-server",
-        description="Standalone GameSpy-compatible LAN server for Fruit Ninja 1.7.6",
+        description="Standalone GameSpy-compatible server for Fruit Ninja 1.7.6",
     )
     parser.add_argument(
         "--config",
