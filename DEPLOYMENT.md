@@ -1,5 +1,10 @@
 # FruitSpy Internet Alpha Deployment
 
+End-user walkthroughs:
+
+- [Host FruitSpy at home](docs/HOME_HOSTING.md)
+- [Host FruitSpy on a VPS](docs/VPS_HOSTING.md)
+
 ## Scope
 
 This runbook deploys the single-node, direct-connect Internet alpha. It does not provide a gameplay relay, accounts, transport encryption, or protection equivalent to a modern public game service. Keep access limited to known testers until the two-network validation matrix passes.

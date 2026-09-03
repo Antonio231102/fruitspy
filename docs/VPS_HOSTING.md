@@ -1,0 +1,281 @@
+# Host FruitSpy on a VPS
+
+This guide installs FruitSpy on an IPv4 Linux virtual private server. A VPS is the preferred Internet-alpha topology because the matchmaking server is outside both players' home networks and can observe each client's public UDP endpoint.
+
+FruitSpy is a preservation project for Fruit Ninja 1.7.6. It does not distribute the game. Each player must patch a lawfully obtained APK and sign their own copy.
+
+## Before you begin
+
+You need:
+
+- A VPS with a public IPv4 address
+- A current Linux distribution using systemd; the commands below target Ubuntu or Debian
+- SSH access with a non-root account that can use `sudo`
+- A short DNS name pointing to the VPS
+- FruitSpy source code
+- Two devices on independent networks for acceptance testing
+
+The DNS name patched into the APK must be fewer than 20 ASCII characters. FruitSpy currently requires IPv4; an IPv6-only VPS is not supported.
+
+A low-end general-purpose instance should be adequate for a controlled two-player alpha, but FruitSpy has not been publicly load-tested. Start with the checked-in 256 MiB process memory limit and increase capacity only from measurements.
+
+## 1. Create and secure the VPS
+
+Create an Ubuntu or Debian VPS with a dedicated public IPv4 address. Configure SSH key authentication before exposing FruitSpy. Keep the provider's recovery console available in case a firewall rule blocks SSH.
+
+Update the operating system and install Python tooling:
+
+```text
+sudo apt update
+sudo apt upgrade
+sudo apt install python3 python3-venv
+python3 --version
+```
+
+Python 3.11 or newer is required.
+
+Do not install a web server or HTTP reverse proxy for FruitSpy. The game uses raw TCP and UDP, not HTTP.
+
+## 2. Configure DNS
+
+Create a DNS `A` record pointing to the VPS public IPv4 address. For example:
+
+```text
+fn.example.net -> 203.0.113.20
+```
+
+Requirements:
+
+- The complete hostname must be fewer than 20 ASCII characters.
+- It must resolve directly to the VPS IPv4 address.
+- Do not enable an HTTP/CDN proxy for the record.
+- Patch every test APK with this exact hostname.
+
+Verify DNS from your computer and from the VPS. On Linux:
+
+```text
+getent ahostsv4 fn.example.net
+```
+
+The result must contain the VPS public IPv4 address.
+
+## 3. Install FruitSpy
+
+Place a clean FruitSpy checkout at `/opt/fruitspy`. Do not copy APKs, signing keys, passwords, packet captures, or device dumps to the VPS.
+
+If Git access is available:
+
+```text
+git clone https://github.com/Antonio231102/fruitspy.git fruitspy
+sudo install -d -m 0755 /opt/fruitspy
+sudo cp -a fruitspy/. /opt/fruitspy/
+```
+
+Alternatively, upload a source archive, extract it locally, and copy only the clean repository contents to `/opt/fruitspy`.
+
+Create the Python environment and install the server package:
+
+```text
+sudo python3 -m venv /opt/fruitspy/venv
+sudo /opt/fruitspy/venv/bin/python -m pip install /opt/fruitspy/server
+```
+
+FruitSpy has no runtime packages outside the Python standard library. Installing it creates the `fruitspy-server` and `fruitspy-healthcheck` commands inside the virtual environment.
+
+## 4. Create the Internet configuration
+
+Create a machine-local configuration outside the repository:
+
+```text
+sudo install -d -m 0755 /etc/fruitspy
+sudo cp /opt/fruitspy/server/config.internet.example.json /etc/fruitspy/config.json
+sudo chmod 0644 /etc/fruitspy/config.json
+sudoedit /etc/fruitspy/config.json
+```
+
+Set:
+
+```json
+{
+  "mode": "internet",
+  "bind_host": "0.0.0.0",
+  "advertise_host": "fn.example.net"
+}
+```
+
+Replace `fn.example.net` with your DNS name. Keep the standard ports and checked-in limits for the initial deployment.
+
+The GameSpy secret in this configuration is embedded in the original client protocol and is not an administrative password.
+
+## 5. Open the provider firewall
+
+In the VPS provider's firewall or security-group control panel, allow:
+
+| Protocol | Destination port | Purpose |
+| --- | ---: | --- |
+| UDP | 27900 | Availability and QR2 registration |
+| TCP | 6667 | PeerChat staging rooms |
+| TCP | 28910 | Server Browser discovery |
+| UDP | 27901 | NatNeg endpoint exchange |
+
+Keep SSH restricted to your administrative source address when possible. During a controlled alpha, restrict FruitSpy to the known tester networks when their addresses are stable. Mobile carrier addresses can change and might require a temporary wider rule.
+
+Do not open gameplay port 6500 on the VPS. Gameplay remains peer-to-peer; the current server does not relay it.
+
+## 6. Configure the Linux firewall
+
+Ubuntu and Debian users can use UFW. Allow SSH before enabling the firewall:
+
+```text
+sudo ufw allow OpenSSH
+sudo ufw allow 6667/tcp
+sudo ufw allow 28910/tcp
+sudo ufw allow 27900/udp
+sudo ufw allow 27901/udp
+sudo ufw enable
+sudo ufw status verbose
+```
+
+If the server already uses nftables, merge the rules in `/opt/fruitspy/deploy/nftables.rules.example` into the existing `inet filter input` chain. Do not replace an existing firewall file blindly, and validate candidate rules before loading them:
+
+```text
+sudo nft --check --file /path/to/candidate-rules.nft
+```
+
+Both the provider firewall and the operating-system firewall must allow the traffic.
+
+## 7. Install the systemd service
+
+The checked-in service runs FruitSpy with an ephemeral unprivileged identity and restricts filesystem writes, devices, kernel interfaces, address families, file descriptors, tasks, and memory.
+
+Install and verify it:
+
+```text
+sudo cp /opt/fruitspy/deploy/fruitspy.service /etc/systemd/system/fruitspy.service
+sudo systemd-analyze verify /etc/systemd/system/fruitspy.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now fruitspy.service
+sudo systemctl status fruitspy.service
+```
+
+The service runs a four-protocol readiness check after startup. It waits up to 15 seconds for Availability/QR2, PeerChat, Server Browser, and NatNeg. If startup health fails, systemd marks the service failed and applies its restart policy.
+
+View recent logs:
+
+```text
+sudo journalctl --unit fruitspy.service --since today
+```
+
+Follow logs during a test:
+
+```text
+sudo journalctl --unit fruitspy.service --follow
+```
+
+Internet-mode diagnostics omit chat bodies, nicknames, client-provided quit reasons, and raw Server Browser frames. Retain source-address logs only as long as needed to diagnose the alpha.
+
+## 8. Run local and public health checks
+
+On the VPS:
+
+```text
+sudo /opt/fruitspy/venv/bin/python -m fruitspy.healthcheck \
+  --config /etc/fruitspy/config.json \
+  --host 127.0.0.1 \
+  --timeout 2
+```
+
+Expected output contains four passes:
+
+```text
+PASS service=availability_qr_udp detail=ok
+PASS service=peerchat_tcp detail=ok
+PASS service=server_browser_tcp detail=ok
+PASS service=natneg_udp detail=ok
+```
+
+Then run the same health check from a computer on another network:
+
+```text
+cd server
+python -m fruitspy.healthcheck \
+  --config config.internet.example.json \
+  --host fn.example.net \
+  --timeout 3
+```
+
+The local check proves process readiness. The remote check additionally exercises DNS, the provider firewall, and the host firewall. A web port-checking service usually tests only TCP and cannot verify both required UDP services.
+
+## 9. Patch the client APKs
+
+On your local development computer, not on the VPS:
+
+```text
+python server/patch_apk.py original.apk patched-unsigned.apk \
+  --server-host fn.example.net \
+  --report server/apk-patch-report.json
+```
+
+Use the exact hostname in `/etc/fruitspy/config.json`. Align and sign the output with your own Android signing key. Never upload an original or patched APK, signing key, password, or extracted game assets to the VPS or repository.
+
+A copy signed with your key cannot normally update an installation signed by another key. Back up anything important before uninstalling the existing app.
+
+## 10. Validate Internet gameplay
+
+Use two clients on independent networks, such as two separate residential connections or one residential connection and one cellular connection:
+
+1. Record a UTC test start time.
+2. Confirm the local and remote four-protocol health checks pass.
+3. Have device A host a match.
+4. Have device B discover and join it.
+5. Confirm the logs contain QR2 registration, Server Browser discovery, both PeerChat clients, and `service=natneg event=peers_paired` with one session identifier.
+6. Complete three consecutive games and a rematch.
+7. Repeat with device B hosting.
+8. Run the health checks again.
+
+Success in the staging room alone is not a direct gameplay pass. The direct-connect alpha passes only when discovery, staging, NatNeg pairing, gameplay, rematch, and both hosting directions succeed.
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| `fruitspy.service` fails during startup | `systemctl status`, `journalctl`, configuration path, and duplicate listeners |
+| Local health fails | FruitSpy process and `/etc/fruitspy/config.json` |
+| Local passes but remote fails | Provider firewall, UFW/nftables, DNS, and whether the VPS actually has public IPv4 |
+| Availability fails | UDP 27900 and the patched hostname |
+| PeerChat fails | TCP 6667 and admission events |
+| No game appears | QR2 registration, reported-server expiry, and TCP 28910 |
+| NatNeg never pairs | UDP 27901, timestamps, and matching NatNeg session identifiers |
+| NatNeg pairs but gameplay times out | Symmetric NAT, CGNAT, or restrictive client networks; record this for relay design |
+
+Do not solve a failed check by disabling the entire firewall or removing admission limits. Identify whether the failure is local process readiness, public reachability, matchmaking, NatNeg, or direct gameplay.
+
+## Update FruitSpy
+
+Stop the service before replacing code:
+
+```text
+sudo systemctl stop fruitspy.service
+```
+
+Replace `/opt/fruitspy` with the reviewed source, preserve `/etc/fruitspy/config.json`, and reinstall the package:
+
+```text
+sudo /opt/fruitspy/venv/bin/python -m pip install --force-reinstall /opt/fruitspy/server
+sudo systemctl start fruitspy.service
+sudo systemctl status fruitspy.service
+```
+
+Run both health checks after every update. Do not overwrite the machine-local configuration with the example file without reviewing new settings.
+
+## Stop and remove the service
+
+```text
+sudo systemctl disable --now fruitspy.service
+sudo rm /etc/systemd/system/fruitspy.service
+sudo systemctl daemon-reload
+```
+
+Remove the four FruitSpy rules from the provider firewall and UFW or nftables. Remove the DNS record when the host is no longer in use.
+
+FruitSpy stores matchmaking state only in memory. There is no gameplay database to back up or delete. See [Internet Alpha Deployment](../DEPLOYMENT.md) for the full acceptance matrix, operational boundaries, and relay gate.
