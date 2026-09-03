@@ -78,6 +78,8 @@ sudo systemctl status fruitspy.service
 
 The unit runs with a dynamic unprivileged identity, a read-only filesystem view, restricted address families, bounded file descriptors, bounded tasks, and a 256 MiB memory ceiling. `ExecStartPost` waits up to 15 seconds for all four protocol checks. A failed startup check causes the unit to fail and follow its bounded restart policy.
 
+For accounts without root access, `deploy/fruitspy.user.service` runs from `~/fruitspy` with configuration in `~/.config/fruitspy/config.json`. Enable user lingering before logout and use `systemctl --user`; see the [VPS hosting guide](docs/VPS_HOSTING.md#rootless-systemd-alternative). Rootless deployment cannot change the host firewall, so an administrator or provider control panel must permit the four service ports.
+
 Inspect structured events without enabling payload-level diagnostics:
 
 ```text

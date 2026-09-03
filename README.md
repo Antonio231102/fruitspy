@@ -18,7 +18,7 @@ The LAN path has been exercised across an Android emulator and a Galaxy S4 for r
 ## Hosting guides
 
 - [Host FruitSpy at home](docs/HOME_HOSTING.md) — Windows-oriented router, firewall, DNS, startup, and external-test instructions.
-- [Host FruitSpy on a VPS](docs/VPS_HOSTING.md) — Ubuntu/Debian installation, cloud firewall, systemd, health checks, updates, and removal.
+- [Host FruitSpy on a VPS](docs/VPS_HOSTING.md) — Ubuntu/Debian installation, root or rootless systemd, cloud firewall, health checks, updates, and removal.
 - [Internet alpha deployment reference](DEPLOYMENT.md) — operator acceptance matrix, failure classification, and relay gate.
 
 Use a VPS when either game client will share the home network with a home-hosted FruitSpy server. The current Internet profile must observe each game client from outside that client's NAT; mixed local/remote play behind the server's router is not a supported acceptance topology.

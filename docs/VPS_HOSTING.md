@@ -174,6 +174,48 @@ sudo journalctl --unit fruitspy.service --follow
 
 Internet-mode diagnostics omit chat bodies, nicknames, client-provided quit reasons, and raw Server Browser frames. Retain source-address logs only as long as needed to diagnose the alpha.
 
+### Rootless systemd alternative
+
+If the VPS account cannot use `sudo`, FruitSpy can run from the account's home directory because all four service ports are above 1024. This does not grant permission to change the host firewall.
+
+Use this layout:
+
+```text
+~/fruitspy/                         repository checkout
+~/.config/fruitspy/config.json     machine-local Internet configuration
+~/.config/systemd/user/fruitspy.service
+```
+
+Copy the Internet example, set its `advertise_host`, and protect it:
+
+```text
+mkdir -p ~/.config/fruitspy ~/.config/systemd/user
+cp ~/fruitspy/server/config.internet.example.json ~/.config/fruitspy/config.json
+chmod 600 ~/.config/fruitspy/config.json
+```
+
+Edit `~/.config/fruitspy/config.json`, keeping `mode` set to `internet` and setting `advertise_host` to the public IPv4 address or short DNS name.
+
+Enable user-service persistence and install the rootless unit:
+
+```text
+loginctl enable-linger
+cp ~/fruitspy/deploy/fruitspy.user.service ~/.config/systemd/user/fruitspy.service
+systemctl --user daemon-reload
+systemctl --user enable --now fruitspy.service
+systemctl --user status fruitspy.service
+```
+
+Some providers require an administrator to enable lingering. Confirm `loginctl show-user \"$USER\" --property=Linger` reports `Linger=yes`; otherwise the user service can stop after the last login session.
+
+The rootless unit runs directly from the source checkout with `/usr/bin/python3`, so it works when the provider has Python 3.11 or newer but does not install the optional `python3-venv` package. Follow logs with:
+
+```text
+journalctl --user --unit fruitspy.service --follow
+```
+
+The rootless account cannot install UFW or nftables rules. Configure the provider firewall in its control panel and have the VPS administrator confirm that the host firewall permits TCP 6667/28910 and UDP 27900/27901. Local health can pass while every public check times out if either firewall still blocks those ports.
+
 ## 8. Run local and public health checks
 
 On the VPS:
@@ -181,6 +223,16 @@ On the VPS:
 ```text
 sudo /opt/fruitspy/venv/bin/python -m fruitspy.healthcheck \
   --config /etc/fruitspy/config.json \
+  --host 127.0.0.1 \
+  --timeout 2
+```
+
+For the rootless layout:
+
+```text
+cd ~/fruitspy/server
+python3 -m fruitspy.healthcheck \
+  --config ~/.config/fruitspy/config.json \
   --host 127.0.0.1 \
   --timeout 2
 ```
@@ -266,6 +318,14 @@ sudo systemctl start fruitspy.service
 sudo systemctl status fruitspy.service
 ```
 
+For a rootless deployment, stop the user service, replace `~/fruitspy` while preserving `~/.config/fruitspy/config.json`, and restart:
+
+```text
+systemctl --user stop fruitspy.service
+systemctl --user start fruitspy.service
+systemctl --user status fruitspy.service
+```
+
 Run both health checks after every update. Do not overwrite the machine-local configuration with the example file without reviewing new settings.
 
 ## Stop and remove the service
@@ -274,6 +334,14 @@ Run both health checks after every update. Do not overwrite the machine-local co
 sudo systemctl disable --now fruitspy.service
 sudo rm /etc/systemd/system/fruitspy.service
 sudo systemctl daemon-reload
+```
+
+For a rootless deployment:
+
+```text
+systemctl --user disable --now fruitspy.service
+rm ~/.config/systemd/user/fruitspy.service
+systemctl --user daemon-reload
 ```
 
 Remove the four FruitSpy rules from the provider firewall and UFW or nftables. Remove the DNS record when the host is no longer in use.
