@@ -32,7 +32,15 @@ For protocol diagnostics, add `--verbose`. `config.json` is the dependency-free 
 python -m fruitspy --config config.local.json
 ```
 
-Do not expose a development checkout directly to the public Internet. Use an OS firewall that permits only the four protocol ports, run the process as an unprivileged account under a supervisor, and retain minimal logs. A controlled two-network alpha test is the next deployment milestone.
+Do not expose a development checkout directly to the public Internet. Use an OS firewall that permits only the four protocol ports, run the process as an unprivileged account under a supervisor, and retain minimal logs. The guarded Linux deployment and two-network acceptance procedure are documented in [DEPLOYMENT.md](DEPLOYMENT.md).
+
+Check all four local listeners after startup:
+
+```text
+python -m fruitspy.healthcheck --config config.local.json
+```
+
+The command validates Availability/QR2 and NatNeg responses, checks both TCP listeners, and exits nonzero if any service is unavailable.
 
 ### Internet admission controls
 
@@ -74,11 +82,11 @@ cd server
 python -m unittest
 ```
 
-The suite covers cryptography, configuration validation, admission controls, connection deadlines, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, and deterministic APK patching.
+The suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, and deterministic APK patching.
 
 ## Online play
 
-LAN support remains the compatibility baseline. Initial online development now includes explicit `lan` and `internet` profiles, observed public-port publication for hosts behind NAT, bounded protocol frames, TCP admission limits, bounded per-source UDP token buckets, idle connection deadlines, privacy-aware Internet diagnostics, and IPv4-or-DNS APK patch targets. Process supervision, firewall deployment, cross-network validation, relay fallback, and broader abuse controls are tracked in [ROADMAP.md](ROADMAP.md).
+LAN support remains the compatibility baseline. Online development now includes explicit deployment profiles, observed public-port publication, bounded protocol and state resources, TCP and UDP admission controls, connection deadlines, structured NatNeg lifecycle events, a four-protocol health check, systemd supervision, an nftables allowlist example, privacy-aware Internet diagnostics, and IPv4-or-DNS APK patch targets. Cross-network validation, relay fallback, and broader abuse controls remain tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Release status
 

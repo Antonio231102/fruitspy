@@ -41,9 +41,10 @@ Online direct-connect foundation is in progress:
 - Added strict frame and datagram sizes, total and per-source TCP admission caps, bounded per-source QR2/NatNeg token buckets, and absolute handshake/frame deadlines.
 - Added stable connection identifiers and structured Internet-mode connection events. Internet debug logs omit chat bodies, nicknames, quit reasons, and raw Server Browser frames.
 - Extended the APK patch target to accept a short DNS name or IPv4 address.
-- Added regression coverage for profile validation, observed public-port encoding, online QR2 relay routing, oversized inputs, admission limits, UDP rate limiting, and idle clients.
+- Added regression coverage for profile validation, observed public-port encoding, online QR2 relay routing, oversized inputs, admission limits, UDP rate limiting and refill, idle clients, malformed-datagram recovery, and post-rejection listener recovery.
+- Added a four-protocol readiness command, hardened systemd unit, nftables allowlist example, guarded deployment runbook, two-network acceptance matrix, and structured NatNeg lifecycle events.
 
-Next: process supervision, startup health checks, firewall deployment, malformed-input resilience expansion, and a controlled two-network direct-connect test. The Internet profile remains a guarded development profile until that deployment validation succeeds.
+Next: install the guarded profile on a stable public IPv4 host and execute the two-network direct-connect matrix. Relay work remains gated on those results so direct-connect failures can be separated from deployment errors and LAN behavior remains unchanged.
 
 ## Phase 1 — Freeze the LAN baseline
 

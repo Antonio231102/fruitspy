@@ -11,6 +11,7 @@ dependencies = []
 
 [project.scripts]
 fruitspy-server = "fruitspy.__main__:main"
+fruitspy-healthcheck = "fruitspy.healthcheck:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

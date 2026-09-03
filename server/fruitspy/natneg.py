@@ -67,15 +67,32 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             client_index = data[13]
             if client_index not in (0, 1):
                 raise ValueError(f"invalid NatNeg client index: {client_index}")
+            is_new_session = cookie not in self.state.nat_sessions
             session = self.state.touch_nat_peer(cookie, client_index, addr, version)
+            LOG.info(
+                "service=natneg event=%s session=%s peer=%d source=%s",
+                "session_created" if is_new_session else "peer_updated",
+                cookie.hex(),
+                client_index,
+                addr,
+            )
             responses = [(self._with_type(data, NN_INIT_ACK), addr)]
             if 0 in session.peers and 1 in session.peers:
                 for index, peer in session.peers.items():
                     other = session.peers[1 - index]
                     responses.append((self._connect_packet(peer.version, cookie, other.address), peer.address))
-                LOG.info("NatNeg paired cookie=%s peers=%s", cookie.hex(), [p.address for p in session.peers.values()])
+                LOG.info(
+                    "service=natneg event=peers_paired session=%s peers=%s",
+                    cookie.hex(),
+                    [peer.address for peer in session.peers.values()],
+                )
             return responses
         if packet_type == NN_ADDRESS_CHECK:
+            LOG.debug(
+                "service=natneg event=address_check session=%s source=%s",
+                cookie.hex(),
+                addr,
+            )
             reply = bytearray(self._with_type(data, NN_ADDRESS_REPLY))
             if len(reply) < 21:
                 reply.extend(b"\x00" * (21 - len(reply)))
@@ -83,15 +100,36 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             reply[19:21] = struct.pack(">H", addr[1])
             return [(bytes(reply), addr)]
         if packet_type == NN_NATIFY_REQUEST:
+            LOG.debug(
+                "service=natneg event=natify_request session=%s source=%s",
+                cookie.hex(),
+                addr,
+            )
             return [(self._with_type(data, NN_ERT_TEST), addr)]
         if packet_type == NN_REPORT:
+            LOG.info(
+                "service=natneg event=client_report session=%s source=%s bytes=%d",
+                cookie.hex(),
+                addr,
+                len(data),
+            )
             return [(self._with_type(data, NN_REPORT_ACK), addr)]
         if packet_type == NN_PREINIT:
+            LOG.debug(
+                "service=natneg event=preinit session=%s source=%s",
+                cookie.hex(),
+                addr,
+            )
             reply = bytearray(self._with_type(data, NN_PREINIT_ACK))
             if len(reply) > 13:
                 reply[13] = 2
             return [(bytes(reply), addr)]
         if packet_type == NN_CONNECT_ACK:
+            LOG.debug(
+                "service=natneg event=connect_ack session=%s source=%s",
+                cookie.hex(),
+                addr,
+            )
             return []
         return []
 

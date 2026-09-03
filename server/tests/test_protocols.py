@@ -218,6 +218,22 @@ class NatNegTests(unittest.TestCase):
         self.assertEqual(struct.unpack(">H", by_destination[first_addr][16:18])[0], second_addr[1])
         self.assertEqual(by_destination[second_addr][12:16], socket.inet_aton(first_addr[0]))
 
+
+    def test_pairing_emits_structured_lifecycle_events(self) -> None:
+        protocol = NatNegProtocol(test_config(), ServerState(120, 60))
+        cookie = b"LOG1"
+        first = MAGIC + bytes((3, NN_INIT)) + cookie + bytes((0, 0, 1)) + b"\x00" * 6
+        second = MAGIC + bytes((3, NN_INIT)) + cookie + bytes((0, 1, 1)) + b"\x00" * 6
+
+        with self.assertLogs("fruitspy.natneg", level="INFO") as captured:
+            protocol.handle_datagram(first, ("10.0.0.10", 40000))
+            protocol.handle_datagram(second, ("10.0.0.20", 40001))
+
+        output = "\n".join(captured.output)
+        self.assertIn("event=session_created session=4c4f4731", output)
+        self.assertIn("event=peer_updated session=4c4f4731", output)
+        self.assertIn("event=peers_paired session=4c4f4731", output)
+
     def test_oversized_natneg_packet_is_rejected(self) -> None:
         config = test_config()
         protocol = NatNegProtocol(config, ServerState(120, 60))

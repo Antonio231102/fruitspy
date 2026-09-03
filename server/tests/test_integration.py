@@ -6,7 +6,14 @@ from dataclasses import replace
 
 from fruitspy.availability_qr import AvailabilityQRProtocol
 from fruitspy.crypto import gsseckey
-from fruitspy.natneg import MAGIC, NN_CONNECT, NN_INIT, NatNegProtocol
+from fruitspy.natneg import (
+    MAGIC,
+    NN_CONNECT,
+    NN_ERT_TEST,
+    NN_INIT,
+    NN_NATIFY_REQUEST,
+    NatNegProtocol,
+)
 from fruitspy.peerchat import PeerChatServer
 from fruitspy.server_browser import ServerBrowserServer
 from fruitspy.state import ServerState
@@ -359,8 +366,8 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         listener = await asyncio.start_server(service.handle, "127.0.0.1", 0)
         port = listener.sockets[0].getsockname()[1]
         first_reader, first_writer = await asyncio.open_connection("127.0.0.1", port)
-        second_reader = None
         second_writer = None
+        third_writer = None
         try:
             await asyncio.sleep(0)
             second_reader, second_writer = await asyncio.open_connection(
@@ -372,10 +379,25 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
                 b"",
             )
             self.assertFalse(first_reader.at_eof())
+
+            first_writer.close()
+            await first_writer.wait_closed()
+            for _ in range(100):
+                if service.admission.total == 0:
+                    break
+                await asyncio.sleep(0.01)
+            self.assertEqual(service.admission.total, 0)
+
+            _, third_writer = await asyncio.open_connection("127.0.0.1", port)
+            await asyncio.sleep(0)
+            self.assertEqual(service.admission.total, 1)
         finally:
             if second_writer is not None:
                 second_writer.close()
                 await second_writer.wait_closed()
+            if third_writer is not None:
+                third_writer.close()
+                await third_writer.wait_closed()
             first_writer.close()
             await first_writer.wait_closed()
             listener.close()
@@ -404,9 +426,40 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
             await loop.sock_sendto(client, request, ("127.0.0.1", port))
             with self.assertRaises(TimeoutError):
                 await asyncio.wait_for(loop.sock_recvfrom(client, 2048), 0.2)
+            await asyncio.sleep(1.05)
+            recovered = await self.exchange_udp(client, request, port)
+            self.assertEqual(recovered, b"\xfe\xfd\x09" + b"\x00" * 8)
         finally:
             transport.close()
 
+
+    async def test_udp_listeners_recover_after_malformed_packets(self) -> None:
+        loop = asyncio.get_running_loop()
+        qr_client = self.udp_socket()
+        await loop.sock_sendto(qr_client, b"\x03", ("127.0.0.1", self.qr_port))
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(loop.sock_recvfrom(qr_client, 2048), 0.1)
+        availability = await self.exchange_udp(
+            qr_client,
+            b"\x09\x00\x00\x00\x00FruitNinjaand\x00",
+            self.qr_port,
+        )
+        self.assertEqual(availability, b"\xfe\xfd\x09" + b"\x00" * 8)
+
+        nat_client = self.udp_socket()
+        invalid_init = (
+            MAGIC
+            + bytes((3, NN_INIT))
+            + b"BAD1"
+            + bytes((0, 2, 1))
+            + b"\x00" * 6
+        )
+        await loop.sock_sendto(nat_client, invalid_init, ("127.0.0.1", self.nat_port))
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(loop.sock_recvfrom(nat_client, 2048), 0.1)
+        natify = MAGIC + bytes((3, NN_NATIFY_REQUEST)) + b"GOOD"
+        response = await self.exchange_udp(nat_client, natify, self.nat_port)
+        self.assertEqual(response[7], NN_ERT_TEST)
 
 if __name__ == "__main__":
     unittest.main()
