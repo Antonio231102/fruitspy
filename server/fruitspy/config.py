@@ -45,7 +45,6 @@ class TimeoutConfig:
     reported_server_seconds: int
     nat_session_seconds: int
     peerchat_handshake_seconds: int
-    peerchat_idle_seconds: int
     server_browser_idle_seconds: int
     rate_limit_entry_seconds: int
 
@@ -131,7 +130,6 @@ def load_config(path: str | Path) -> ServerConfig:
         ("reported_server_seconds", timeouts.reported_server_seconds),
         ("nat_session_seconds", timeouts.nat_session_seconds),
         ("peerchat_handshake_seconds", timeouts.peerchat_handshake_seconds),
-        ("peerchat_idle_seconds", timeouts.peerchat_idle_seconds),
         ("server_browser_idle_seconds", timeouts.server_browser_idle_seconds),
         ("rate_limit_entry_seconds", timeouts.rate_limit_entry_seconds),
     ):

@@ -127,17 +127,15 @@ class PeerChatClient:
         loop = asyncio.get_running_loop()
         while not self.reader.at_eof():
             if self.welcomed:
-                timeout = self.server.config.timeouts.peerchat_idle_seconds
-                timeout_name = "idle"
+                data = await self.reader.read(4096)
             else:
                 timeout = self._handshake_deadline - loop.time()
-                timeout_name = "handshake"
                 if timeout <= 0:
                     raise ValueError("PeerChat handshake deadline exceeded")
-            try:
-                data = await asyncio.wait_for(self.reader.read(4096), timeout)
-            except TimeoutError as error:
-                raise ValueError(f"PeerChat {timeout_name} deadline exceeded") from error
+                try:
+                    data = await asyncio.wait_for(self.reader.read(4096), timeout)
+                except TimeoutError as error:
+                    raise ValueError("PeerChat handshake deadline exceeded") from error
             if not data:
                 return
             if self.decryptor is not None:

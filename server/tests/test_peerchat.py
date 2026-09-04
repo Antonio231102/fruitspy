@@ -84,6 +84,21 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_welcomed_connection_remains_open_without_traffic(self) -> None:
+        client = await EncryptedPeerClient.connect(self.port)
+        try:
+            await client.send("NICK player")
+            await client.send("USER player 0 * :Player")
+            await client.read_until("376 player")
+
+            await asyncio.sleep(1.1)
+
+            await client.send("PING keepalive")
+            response = await client.read_until("\r\n")
+            self.assertIn("PONG :keepalive", response)
+        finally:
+            await client.close()
+
     async def test_oversized_line_is_rejected(self) -> None:
         reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
         try:

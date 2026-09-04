@@ -65,7 +65,6 @@ Both profiles use the checked-in safety limits; Internet operators should tune t
 | `reported_servers` | 2048 | Hard bound on QR2 server registrations |
 | `nat_sessions` | 4096 | Hard bound on concurrent NatNeg cookie sessions |
 | `peerchat_handshake_seconds` | 15 | Absolute deadline for PeerChat registration |
-| `peerchat_idle_seconds` | 360 | Post-registration PeerChat idle deadline; longer than the observed client ping interval |
 | `server_browser_idle_seconds` | 30 | Header and frame completion deadline |
 | `rate_limit_entry_seconds` | 120 | Idle lifetime for UDP source accounting |
 

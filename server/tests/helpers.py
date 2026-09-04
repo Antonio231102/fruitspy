@@ -31,7 +31,6 @@ def test_config() -> ServerConfig:
             reported_server_seconds=120,
             nat_session_seconds=60,
             peerchat_handshake_seconds=15,
-            peerchat_idle_seconds=360,
             server_browser_idle_seconds=30,
             rate_limit_entry_seconds=120,
         ),
