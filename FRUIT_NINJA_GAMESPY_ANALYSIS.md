@@ -228,7 +228,7 @@ PlayerInfoCallback : Room %s, Nick %s, IP %s, ID %d
 
 This is the same three-level Peer room model represented by GameSpyDocs and OpenSpy. The game also has a generated-nick format `nick%u` and save fields `gsnick`, `gswins`, and `gsloss`.
 
-Some login/CD-key strings may be optional SDK branches. Their presence alone does not prove that Fruit Ninja requires a GameSpy account or CD key. The absence of `gpcm.gamespy.com` and `gpsp.gamespy.com`, plus the generated nickname, supports an anonymous PeerChat path.
+The login and CD-key strings belong to optional SDK branches rather than Fruit Ninja's title path. The absence of `gpcm.gamespy.com` and `gpsp.gamespy.com`, the generated nickname, cross-reference analysis of all three packaged ABIs, and a complete traced two-device public match confirm an anonymous PeerChat path.
 
 ### 4. Host advertisement and discovery
 
@@ -321,10 +321,10 @@ Strings such as `wave_counts_%s`, `waveIdx`, `game_count`, scores, misses, and t
 ### Gaps and risks
 
 1. **No Fruit Ninja registration.** Searches of OpenSpy's `Gamemaster.sql` found no entry matching the recovered `FruitNinjaand` name. A record with secret `nNfhSl` must be added.
-2. **Registration is recovered, protocol selection is not fully labeled.** `peerSetTitle` parameters are known, but the exact Server Browser enctype branch and every optional QR/CD-key branch still need confirmation.
-3. **OpenSpy is incomplete.** Its source contains TODOs and compatibility shortcuts. For example, the PeerChat `CDKEY` handler unconditionally authenticates, and NatNeg comments acknowledge incomplete game-aware matching.
+2. **Registration and protocol selection are recovered.** `peerSetTitle`, the anonymous `peerConnect` call, Server Browser enctype, and the QR/NatNeg paths used by the title are identified. Optional SDK code remains linked but is not evidence that the title invokes it.
+3. **OpenSpy is incomplete.** Its source contains TODOs and compatibility shortcuts. Its unconditional PeerChat `CDKEY` success is not needed by Fruit Ninja, and NatNeg comments acknowledge incomplete game-aware matching.
 4. **Paper inaccuracies exist.** The NatNeg `REPORT_ACK` discrepancy is one concrete example. Prefer server source and packet evidence over prose when they conflict.
-5. **Generic SDK strings overstate used scope.** The static library contains optional login, CD-key, and query paths. Restoration should be driven by app-facing state-machine references and later packet evidence, not every linked command.
+5. **Generic SDK strings overstate used scope.** The static library contains optional login, CD-key, and query paths. Cross-reference and runtime evidence, rather than string presence, determine the restoration surface.
 6. **No Fruit Ninja gameplay schema.** OpenSpy restores central GameSpy services, not the direct Mortar packet payloads.
 
 ## Restoration requirements and next static-analysis targets
@@ -339,10 +339,10 @@ The initial registration blocker is resolved:
 - Server Browser maximum concurrent updates: `20`
 - NAT Negotiation: enabled
 - Room ping and cross-ping: enabled for all three room types
-- Authentication: anonymous `peerConnect` with profile ID 0
+- Authentication: anonymous `peerConnect` with profile ID 0; no account or CD-key step
 - Automatch: two players, empty filter, candidate `maxplayers == 2`
 
-The registration and primary Peer parameters are resolved. Remaining compatibility questions are optional CD-key reachability, exact client expectations for room metadata, and Fruit Ninja packet-channel/message layouts. Product and namespace IDs are not passed by the confirmed anonymous Peer path.
+The registration and primary Peer parameters are resolved. Product and namespace IDs are not passed by the confirmed anonymous Peer path. Static cross-reference analysis found the SDK's CD-key formatter and wrapper chain in `armeabi`, `armeabi-v7a`, and `x86`, but no direct caller or stored function-pointer reference to its top-level API in any ABI. A privacy-safe command trace of a complete two-device public match observed both clients from `CRYPT` through `QUIT`, including room setup and gameplay messages, with zero `CDKEY` commands and no rejected PeerChat commands.
 
 ### Standalone server implementation
 
@@ -370,7 +370,7 @@ The automated suite exercises GameSpy cryptography, encrypted two-user PeerChat,
 
 Verification confirms valid ARM and x86 ELF headers, exactly seven rewritten hostname locations per patched ABI, the expected NatNeg resolver instruction patches, no remaining `gamespy.com` hostname in those two libraries, unchanged non-target APK payloads, a valid APK manifest, all three ABI directories, and valid self-signed JAR-v1 and APK-v3 signatures. Runtime tracing on the Galaxy S4 and x86 emulator confirmed NatNeg UDP exchange with `192.168.100.2:27901`, direct peer traversal to `192.168.100.17`, and bidirectional gameplay transport packets.
 
-Remaining static targets are `INetworkPacketChannel` message layouts, optional CD-key/LAN-discovery branches, and the eventual `armeabi` patch.
+Remaining static targets are `INetworkPacketChannel` message layouts, optional LAN-discovery branches, and the eventual `armeabi` endpoint patch.
 
 ## Evidence locations in the APK
 
@@ -392,6 +392,7 @@ Remaining static targets are `INetworkPacketChannel` message layouts, optional C
 | `hbgs` receive/ack handling | `0x19fb48`–`0x19fcdc` |
 | NatNeg magic dispatch in peer receive loop | `0x19fe24`–`0x19fe58` |
 | PeerChat default-host selection | `0x1c1638` |
+| Unused CD-key API chain | `0x1abd78` → `0x1add3c` → `0x1c0ec0`; `CDKEY %s` at `0x378f48` |
 
 | Evidence | x86 file/VA offset |
 |---|---:|
@@ -410,6 +411,9 @@ Remaining static targets are `INetworkPacketChannel` message layouts, optional C
 | `mortar` GT2 setup and validation | `0x18a550`–`0x18a5b5`, `0x18aa30`–`0x18aaad` |
 | `hbgs` send/ACK implementation | `0x18a6b8`–`0x18a774`, `0x18ab70`–`0x18acd4` |
 | NatNeg dispatch in receive loop | `0x18ae5d`–`0x18ae92` |
+| Unused CD-key API chain | `0x197b80` → `0x19bad0` → `0x1b0600`; `CDKEY %s` at `0x372b7f` |
+
+The legacy `armeabi` build has the corresponding unused chain `0x1abda8` → `0x1add6c` → `0x1c0ef0`, with `CDKEY %s` at `0x375a94`. In all three ABIs, the final function formats the wire command, while its top-level API has neither a direct callsite nor a stored function-pointer reference elsewhere in the library.
 
 ## Primary references
 

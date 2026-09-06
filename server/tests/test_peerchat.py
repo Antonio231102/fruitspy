@@ -92,6 +92,15 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_cdkey_is_not_treated_as_authentication(self) -> None:
+        client = await EncryptedPeerClient.connect(self.port)
+        try:
+            await client.send("CDKEY unused")
+            response = await client.read_until("\r\n")
+            self.assertEqual(response, ":s 421 * CDKEY :Unknown command\r\n")
+        finally:
+            await client.close()
+
     async def test_welcomed_connection_remains_open_without_traffic(self) -> None:
         client = await EncryptedPeerClient.connect(self.port)
         try:

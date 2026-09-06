@@ -101,6 +101,12 @@ The state sweeper removes expired QR2 registrations and NatNeg setup sessions on
 
 QR2 and NatNeg share one global packet budget and one per-source table, so moving traffic between the two UDP ports cannot bypass admission. A source that continues transmitting after exhausting its burst is temporarily banned across both listeners after `udp_source_violation_burst` consecutive rejections. An accepted packet resets that violation run. Global exhaustion does not penalize individual sources. Structured `udp_admission_rejected` events identify global limits, source limits, newly started bans, active bans, and source-table capacity without parsing packet contents.
 
+### Anonymous authentication boundary
+
+FruitSpy intentionally provides no player accounts, product-key validation, Android LVL enforcement, or persistent nickname ownership. `CRYPT` proves only that the client speaks the title's shared protocol; the secret is embedded in every APK. `NICK` is an arbitrary display name whose uniqueness lasts only for the active connection. QR2 challenge-response and NatNeg endpoint claims establish temporary protocol and network reachability, not a licensed installation or player identity. Source addresses are used only for bounded operational controls.
+
+Fruit Ninja's linked GameSpy SDK contains an unused `CDKEY` command path, but the title does not call it. Cross-reference analysis found no caller or function-pointer reference to the top-level CD-key API in the APK's `armeabi`, `armeabi-v7a`, or `x86` libraries. A traced two-device public match completed from fresh PeerChat connections through both `QUIT` commands without either client sending `CDKEY`. FruitSpy therefore treats `CDKEY` as an unsupported command rather than returning a false authentication success.
+
 ## Patch a locally owned APK
 
 The repository does not distribute Fruit Ninja or a prebuilt APK. Given a legally obtained Fruit Ninja 1.7.6 APK, rewrite its GameSpy endpoints with:

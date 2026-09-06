@@ -287,9 +287,6 @@ class PeerChatClient:
     async def cmd_usrip(self, params: str) -> None:
         await self.send(f":s 302 :+@{self.host}")
 
-    async def cmd_cdkey(self, params: str) -> None:
-        await self.numeric(706, "1 :Authenticated")
-
     async def cmd_join(self, params: str) -> None:
         channel_name = params.split()[0] if params else ""
         if not channel_name:
