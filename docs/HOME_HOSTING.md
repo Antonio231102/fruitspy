@@ -65,21 +65,19 @@ Create the machine-local configuration from Command Prompt:
 
 ```text
 cd C:\FruitSpy\server
-copy config.internet.example.json config.local.json
+copy config.json config.local.json
 notepad config.local.json
 ```
 
-Set these fields:
+Keep the default bind address:
 
 ```json
 {
-  "mode": "internet",
-  "bind_host": "0.0.0.0",
-  "advertise_host": "fn.example.net"
+  "bind_host": "0.0.0.0"
 }
 ```
 
-Replace `fn.example.net` with your DNS name. Keep the standard ports and checked-in safety limits for the first test. `config.local.json` is ignored by Git.
+Keep the standard ports and checked-in safety limits for the first test. `config.local.json` is ignored by Git. The public DNS name is selected later when patching each APK; FruitSpy does not declare or advertise that hostname in its server configuration.
 
 The GameSpy secret in the example is part of the original compatibility protocol. It is not a private account password.
 
@@ -192,7 +190,7 @@ From a computer on another network with the FruitSpy source available:
 ```text
 cd server
 python -m fruitspy.healthcheck \
-  --config config.internet.example.json \
+  --config config.json \
   --host fn.example.net \
   --timeout 3
 ```
@@ -213,14 +211,14 @@ Use game devices on networks outside the server's home LAN:
 
 A staging-room connection by itself is not a gameplay pass.
 
-## Same-home client limitation
+## Mixed-network client limitation
 
-Do not use a game client on the same LAN as the self-hosted Internet server for the first direct-connect test. The server can observe that client's private or hairpin-NAT endpoint and publish an address that a remote peer cannot reach.
+Do not use one game client on the same LAN as the self-hosted server and another on an external network for the first direct-connect test. The server can observe the local client's private or hairpin-NAT endpoint and publish an address that the remote peer cannot reach.
 
 Supported test arrangements:
 
-- Server and both clients at home: use the `lan` profile.
-- Home server with both clients on external networks: use the `internet` profile.
+- Server and both clients at home: use the unified configuration; gameplay runs directly over their private endpoints.
+- Home server with both clients on external networks: use the same unified configuration.
 - Home server with one local and one remote client: currently router-dependent and not a supported acceptance test.
 
 ## Troubleshooting

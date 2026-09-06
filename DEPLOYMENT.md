@@ -40,16 +40,15 @@ Copy or check out the repository at `/opt/fruitspy` without including local APKs
 sudo install -d -m 0755 /etc/fruitspy
 sudo python3 -m venv /opt/fruitspy/venv
 sudo /opt/fruitspy/venv/bin/pip install /opt/fruitspy/server
-sudo cp /opt/fruitspy/server/config.internet.example.json /etc/fruitspy/config.json
+sudo cp /opt/fruitspy/server/config.json /etc/fruitspy/config.json
 sudo chmod 0644 /etc/fruitspy/config.json
 ```
 
-Edit `/etc/fruitspy/config.json` before starting the service:
+Use the checked-in configuration as the starting point:
 
-- Keep `mode` set to `internet`.
-- Set `advertise_host` to the same short DNS name patched into the clients.
 - Keep `bind_host` at `0.0.0.0` unless the machine has a dedicated service address.
 - Start with the checked-in admission limits. Change them only from measured test traffic.
+- Patch clients with the short DNS name or public IPv4 address that reaches this host. The server configuration does not declare or advertise that client patch target.
 
 The GameSpy secret in this compatibility configuration is embedded in the original client and is not an authentication credential.
 

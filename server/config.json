@@ -1,7 +1,5 @@
 {
-  "mode": "lan",
   "bind_host": "0.0.0.0",
-  "advertise_host": "auto",
   "game": {
     "name": "FruitNinjaand",
     "secret_key": "nNfhSl",

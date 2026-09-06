@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import json
-import socket
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,43 +48,23 @@ class TimeoutConfig:
 
 @dataclass(frozen=True, slots=True)
 class ServerConfig:
-    mode: Literal["lan", "internet"]
     bind_host: str
-    advertise_host: str
     game: GameConfig
     ports: PortConfig
     timeouts: TimeoutConfig
     limits: LimitConfig
 
-
-def _local_address() -> str:
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        sock.connect(("192.0.2.1", 9))
-        return str(sock.getsockname()[0])
-    except OSError:
-        return socket.gethostbyname(socket.gethostname())
-    finally:
-        sock.close()
-
-
 def load_config(path: str | Path) -> ServerConfig:
     source = Path(path)
     raw = json.loads(source.read_text(encoding="utf-8"))
-    mode = raw["mode"]
+    expected_fields = {"bind_host", "game", "ports", "timeouts", "limits"}
+    unknown_fields = sorted(set(raw) - expected_fields)
+    if unknown_fields:
+        raise ValueError(f"unknown top-level configuration fields: {', '.join(unknown_fields)}")
     game = GameConfig(**raw["game"])
     ports = PortConfig(**raw["ports"])
     timeouts = TimeoutConfig(**raw["timeouts"])
     limits = LimitConfig(**raw["limits"])
-    advertise_host = raw["advertise_host"]
-    if mode not in {"lan", "internet"}:
-        raise ValueError("mode must be 'lan' or 'internet'")
-    if mode == "internet" and advertise_host == "auto":
-        raise ValueError("internet mode requires an explicit advertise_host")
-    if advertise_host == "auto":
-        advertise_host = _local_address()
-    elif not advertise_host.isascii() or not advertise_host.strip() or "\x00" in advertise_host:
-        raise ValueError("advertise_host must be a non-empty ASCII hostname or IPv4 address")
     if game.name != "FruitNinjaand":
         raise ValueError("Fruit Ninja 1.7.6 requires game name FruitNinjaand")
     if len(game.secret_key) != 6:
@@ -136,9 +114,7 @@ def load_config(path: str | Path) -> ServerConfig:
         if not 1 <= value <= 86400:
             raise ValueError(f"{name} must be between 1 and 86400")
     return ServerConfig(
-        mode=mode,
         bind_host=raw["bind_host"],
-        advertise_host=advertise_host,
         game=game,
         ports=ports,
         timeouts=timeouts,

@@ -7,7 +7,7 @@ from fruitspy.crypto import EnctypeX, gsseckey
 from fruitspy.natneg import MAGIC, NN_CONNECT, NN_INIT, NN_INIT_ACK, NatNegProtocol
 from fruitspy.server_browser import ServerBrowserServer
 from fruitspy.state import ServerState
-from tests.helpers import internet_test_config, test_config
+from tests.helpers import test_config
 
 
 def server_browser_request(
@@ -126,8 +126,8 @@ class ServerBrowserTests(unittest.TestCase):
         self.assertIn(b"openstaging\x00", body)
         self.assertTrue(body.endswith(b"\x00\xff\xff\xff\xff"))
 
-    def test_internet_profile_advertises_observed_public_port(self) -> None:
-        config = internet_test_config()
+    def test_server_list_advertises_observed_source_endpoint(self) -> None:
+        config = test_config()
         state = ServerState(120, 60)
         source = ("198.51.100.10", 30123)
         state.report_server(

@@ -2,19 +2,19 @@
 
 ## Objective
 
-Extend the proven FruitSpy LAN implementation to Internet play without creating a second protocol stack or weakening LAN reliability. LAN remains a supported deployment profile and the regression baseline for every release.
+Extend the proven FruitSpy LAN implementation to Internet play without creating a second protocol stack or weakening LAN reliability. LAN remains a supported deployment topology and the regression baseline for every release.
 
 ## Compatibility contract
 
 Every online-play change must preserve these LAN behaviors:
 
 - Two unmodified patched clients can discover each other through Availability/QR2, PeerChat, Server Browsing, and NatNeg.
-- A server configured with a private IPv4 address requires no database, external identity provider, DNS service, or Internet connection.
+- A locally hosted server requires no database, external identity provider, DNS service, or Internet connection.
 - Direct peer traffic remains the default when both devices are mutually reachable.
 - The existing ports and wire formats remain compatible with Fruit Ninja 1.7.6.
 - `python -m unittest` and a two-device LAN smoke test must pass before an online milestone is accepted.
 
-Use one protocol core with explicit `lan` and `internet` deployment profiles. Do not fork the LAN implementation or introduce online-only behavior through implicit address heuristics.
+Use one direct-connect configuration and publish server-observed host endpoints in every deployment. Do not fork the LAN implementation or introduce topology-specific address heuristics.
 
 ## Target architecture
 
@@ -35,23 +35,23 @@ Initial online deployment should remain a single process on one host with a stat
 
 Online direct-connect foundation is in progress:
 
-- Implemented explicit `lan` and `internet` configuration profiles.
-- Preserved the reported game port in LAN mode while publishing the server-observed QR2 source port in Internet mode, which is required when a host is behind port-mapping NAT.
+- Replaced the split `lan` and `internet` profiles with one direct-connect configuration.
+- Published the server-observed QR2 source address and port for every host, including hosts behind port-mapping NAT.
 - Routed Server Browser send-message requests to the registered QR2 source endpoint rather than trusting the requested destination.
 - Added strict frame and datagram sizes, total and per-source TCP admission caps, bounded per-source QR2/NatNeg token buckets, and absolute handshake/frame deadlines.
-- Added stable connection identifiers and structured Internet-mode connection events. Internet debug logs omit chat bodies, nicknames, quit reasons, and raw Server Browser frames.
+- Added stable connection identifiers and structured connection events. Debug logs omit chat bodies, nicknames, quit reasons, and raw Server Browser frames.
 - Extended the APK patch target to accept a short DNS name or IPv4 address.
-- Added regression coverage for profile validation, observed public-port encoding, online QR2 relay routing, oversized inputs, admission limits, UDP rate limiting and refill, idle clients, malformed-datagram recovery, and post-rejection listener recovery.
+- Added regression coverage for unified configuration validation, observed endpoint encoding, QR2 relay routing, oversized inputs, admission limits, UDP rate limiting and refill, idle clients, malformed-datagram recovery, and post-rejection listener recovery.
 - Added a four-protocol readiness command, hardened systemd unit, nftables allowlist example, guarded deployment runbook, two-network acceptance matrix, and structured NatNeg lifecycle events.
 
-Next: install the guarded profile on a stable public IPv4 host and execute the two-network direct-connect matrix. Relay work remains gated on those results so direct-connect failures can be separated from deployment errors and LAN behavior remains unchanged.
+Next: install the guarded deployment on a stable public IPv4 host and execute the two-network direct-connect matrix. Relay work remains gated on those results so direct-connect failures can be separated from deployment errors and LAN behavior remains unchanged.
 
 ## Phase 1 — Freeze the LAN baseline
 
 Purpose: make the current checkpoint reproducible before expanding its exposure.
 
 - Keep protocol fixtures for the observed Fruit Ninja 1.7.6 messages and the NatNeg resolver patches.
-- Add a concise operator runbook covering bind address, advertised address, firewall rules, startup, shutdown, and log collection.
+- Add a concise operator runbook covering bind address, client patch target, firewall rules, startup, shutdown, and log collection.
 - Add a repeatable two-device smoke checklist: host registration, discovery, staging-room exchange, NatNeg pairing, direct gameplay, rematch, and clean disconnect.
 - Record supported APK hash inputs and patcher output metadata without distributing proprietary binaries.
 - Separate checked-in example configuration from machine-local configuration.
@@ -67,7 +67,7 @@ Exit criteria:
 Purpose: prove the current protocols across two independent networks before adding relay complexity.
 
 - Extend APK patch configuration to accept a stable DNS name as well as an IPv4 address. Preserve the NatNeg explicit-host override so the game name is never prepended.
-- Add explicit deployment settings for `mode`, public advertised IPv4 address, and trusted proxy/network boundaries. Keep the existing LAN defaults.
+- Use one direct-connect server configuration for LAN, home-hosted, and VPS deployments. Keep the client APK patch target independent from server socket binding.
 - Deploy one IPv4 host with TCP 6667 and 28910 plus UDP 27900 and 27901 reachable from the Internet.
 - Add strict packet-size limits, connection limits, idle timeouts, and per-source rate limits before exposing the legacy protocols publicly.
 - Reject malformed QR2, Server Browser, PeerChat, and NatNeg messages without terminating a listener.
@@ -99,7 +99,7 @@ Exit criteria:
 - Direct-capable peers still communicate directly.
 - A deliberately blocked direct path completes multiple games through the relay.
 - Loss of relay state ends only the affected match and cannot corrupt other sessions.
-- LAN mode never allocates relay state unless explicitly configured to do so.
+- Direct-connect sessions never allocate relay state unless relay fallback is explicitly configured.
 
 ## Phase 4 — Public-service hardening
 

@@ -95,19 +95,11 @@ class ServerBrowserServer:
                     self.config.timeouts.server_browser_idle_seconds,
                 )
                 size = struct.unpack(">H", header)[0]
-                if self.config.mode == "internet":
-                    LOG.debug(
-                        "service=server_browser event=frame connection=%s bytes=%d",
-                        connection_id,
-                        size,
-                    )
-                else:
-                    LOG.debug(
-                        "Server Browser frame peer=%s header=%s size=%d",
-                        peer,
-                        header.hex(),
-                        size,
-                    )
+                LOG.debug(
+                    "service=server_browser event=frame connection=%s bytes=%d",
+                    connection_id,
+                    size,
+                )
                 if not 3 <= size <= self.config.limits.server_browser_frame_bytes:
                     raise ValueError(f"invalid Server Browser frame length: {size}")
                 payload = bytearray()
@@ -138,8 +130,6 @@ class ServerBrowserServer:
                         size,
                         len(packet),
                     )
-                if self.config.mode == "lan":
-                    LOG.debug("Server Browser packet peer=%s data=%s", peer, packet.hex())
                 if len(packet) < 3:
                     raise ValueError("truncated Server Browser frame")
                 request_type = packet[2]
@@ -153,20 +143,13 @@ class ServerBrowserServer:
                 else:
                     response = None
                 if response is None:
-                    if self.config.mode == "internet":
-                        LOG.info(
-                            "service=server_browser event=frame_ignored "
-                            "connection=%s type=%d bytes=%d",
-                            connection_id,
-                            request_type,
-                            len(packet),
-                        )
-                    else:
-                        LOG.info(
-                            "Server Browser ignored frame peer=%s data=%s",
-                            peer,
-                            packet.hex(),
-                        )
+                    LOG.info(
+                        "service=server_browser event=frame_ignored "
+                        "connection=%s type=%d bytes=%d",
+                        connection_id,
+                        request_type,
+                        len(packet),
+                    )
                 else:
                     writer.write(response)
                     await writer.drain()
@@ -262,7 +245,7 @@ class ServerBrowserServer:
             (
                 candidate
                 for candidate in self.state.active_servers(self.config.game.name)
-                if candidate.browser_endpoint(self.config.mode) == (host, port)
+                if candidate.browser_endpoint() == (host, port)
             ),
             None,
         )
@@ -291,7 +274,7 @@ class ServerBrowserServer:
             (
                 candidate
                 for candidate in self.state.active_servers(self.config.game.name)
-                if candidate.browser_endpoint(self.config.mode) == (host, port)
+                if candidate.browser_endpoint() == (host, port)
             ),
             None,
         )
@@ -360,7 +343,7 @@ class ServerBrowserServer:
             flags = HAS_KEYS_FLAG if fields else 0
         if server.keys.get("natneg", "0") != "0":
             flags |= CONNECT_NEGOTIATE_FLAG
-        public_host, public_port = server.browser_endpoint(self.config.mode)
+        public_host, public_port = server.browser_endpoint()
         if public_port != self.config.game.default_query_port:
             flags |= NONSTANDARD_PORT_FLAG
         private_host = server.keys.get("localip0", "")

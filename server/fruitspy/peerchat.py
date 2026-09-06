@@ -156,19 +156,11 @@ class PeerChatClient:
         if self.closed:
             return
         data = (line + "\r\n").encode("utf-8")
-        if self.server.config.mode == "internet":
-            LOG.debug(
-                "service=peerchat event=send connection=%s bytes=%d",
-                self.connection_id,
-                len(data),
-            )
-        else:
-            LOG.debug(
-                "PeerChat S->C host=%s nick=%s line=%s",
-                self.host,
-                self.nick or "*",
-                line,
-            )
+        LOG.debug(
+            "service=peerchat event=send connection=%s bytes=%d",
+            self.connection_id,
+            len(data),
+        )
         if self.encryptor is not None and not plaintext:
             data = self.encryptor.transform(data)
         self.writer.write(data)
@@ -180,20 +172,12 @@ class PeerChatClient:
     async def command(self, line: str) -> None:
         command, _, params = line.partition(" ")
         name = command.upper()
-        if self.server.config.mode == "internet":
-            LOG.debug(
-                "service=peerchat event=receive connection=%s command=%s bytes=%d",
-                self.connection_id,
-                name,
-                len(line.encode("utf-8")),
-            )
-        else:
-            LOG.debug(
-                "PeerChat C->S host=%s nick=%s line=%s",
-                self.host,
-                self.nick or "*",
-                line,
-            )
+        LOG.debug(
+            "service=peerchat event=receive connection=%s command=%s bytes=%d",
+            self.connection_id,
+            name,
+            len(line.encode("utf-8")),
+        )
         handler = getattr(self, f"cmd_{name.lower()}", None)
         if handler is None:
             await self.numeric(421, f"{name} :Unknown command")
@@ -522,16 +506,8 @@ class PeerChatClient:
             await asyncio.wait_for(self.writer.wait_closed(), 1)
         except (TimeoutError, ConnectionError):
             self.writer.transport.abort()
-        if self.server.config.mode == "internet":
-            LOG.info(
-                "service=peerchat event=disconnected connection=%s source=%s",
-                self.connection_id,
-                self.host,
-            )
-        else:
-            LOG.info(
-                "PeerChat disconnect nick=%s host=%s reason=%s",
-                self.nick,
-                self.host,
-                reason,
-            )
+        LOG.info(
+            "service=peerchat event=disconnected connection=%s source=%s",
+            self.connection_id,
+            self.host,
+        )

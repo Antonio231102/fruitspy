@@ -80,19 +80,11 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
                 raise ValueError("short availability packet")
             game_name, _ = _read_cstring(data, 5)
             status = 0 if game_name == self.config.game.name else 1
-            if self.config.mode == "internet":
-                LOG.info(
-                    "service=qr event=availability source=%s accepted=%s",
-                    addr,
-                    status == 0,
-                )
-            else:
-                LOG.info(
-                    "availability game=%s status=%d source=%s",
-                    game_name,
-                    status,
-                    addr,
-                )
+            LOG.info(
+                "service=qr event=availability source=%s accepted=%s",
+                addr,
+                status == 0,
+            )
             return availability_response(status)
         if packet_type == PACKET_HEARTBEAT:
             return self._heartbeat(data, addr)
@@ -116,10 +108,7 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         game_name = keys.get("gamename")
         accepted_games = {self.config.game.name, f"{self.config.game.name}am"}
         if game_name not in accepted_games:
-            if self.config.mode == "internet":
-                LOG.warning("service=qr event=game_rejected source=%s", addr)
-            else:
-                LOG.warning("QR heartbeat for unknown game %r from %s", game_name, addr)
+            LOG.warning("service=qr event=game_rejected source=%s", addr)
             return None
         server = self.state.report_server(addr, instance_key, keys)
         if server.registered:
@@ -150,6 +139,6 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         LOG.info(
             "QR server registered source=%s browser_endpoint=%s",
             addr,
-            server.browser_endpoint(self.config.mode),
+            server.browser_endpoint(),
         )
         return QR_MAGIC + bytes((PACKET_CLIENT_REGISTERED,)) + server.instance_key

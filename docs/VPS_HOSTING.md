@@ -82,28 +82,26 @@ sudo /opt/fruitspy/venv/bin/python -m pip install /opt/fruitspy/server
 
 FruitSpy has no runtime packages outside the Python standard library. Installing it creates the `fruitspy-server` and `fruitspy-healthcheck` commands inside the virtual environment.
 
-## 4. Create the Internet configuration
+## 4. Create the server configuration
 
 Create a machine-local configuration outside the repository:
 
 ```text
 sudo install -d -m 0755 /etc/fruitspy
-sudo cp /opt/fruitspy/server/config.internet.example.json /etc/fruitspy/config.json
+sudo cp /opt/fruitspy/server/config.json /etc/fruitspy/config.json
 sudo chmod 0644 /etc/fruitspy/config.json
 sudoedit /etc/fruitspy/config.json
 ```
 
-Set:
+Keep the default bind address:
 
 ```json
 {
-  "mode": "internet",
-  "bind_host": "0.0.0.0",
-  "advertise_host": "fn.example.net"
+  "bind_host": "0.0.0.0"
 }
 ```
 
-Replace `fn.example.net` with your DNS name. Keep the standard ports and checked-in limits for the initial deployment.
+Keep the standard ports and checked-in limits for the initial deployment. Patch each APK with the short DNS name or public IPv4 address that reaches the VPS; FruitSpy does not declare or advertise that hostname in its server configuration.
 
 The GameSpy secret in this configuration is embedded in the original client protocol and is not an administrative password.
 
@@ -172,7 +170,7 @@ Follow logs during a test:
 sudo journalctl --unit fruitspy.service --follow
 ```
 
-Internet-mode diagnostics omit chat bodies, nicknames, client-provided quit reasons, and raw Server Browser frames. Retain source-address logs only as long as needed to diagnose the alpha.
+Diagnostics omit chat bodies, nicknames, client-provided quit reasons, and raw Server Browser frames. Retain source-address logs only as long as needed to diagnose the alpha.
 
 ### Rootless systemd alternative
 
@@ -186,15 +184,15 @@ Use this layout:
 ~/.config/systemd/user/fruitspy.service
 ```
 
-Copy the Internet example, set its `advertise_host`, and protect it:
+Copy the unified configuration and protect it:
 
 ```text
 mkdir -p ~/.config/fruitspy ~/.config/systemd/user
-cp ~/fruitspy/server/config.internet.example.json ~/.config/fruitspy/config.json
+cp ~/fruitspy/server/config.json ~/.config/fruitspy/config.json
 chmod 600 ~/.config/fruitspy/config.json
 ```
 
-Edit `~/.config/fruitspy/config.json`, keeping `mode` set to `internet` and setting `advertise_host` to the public IPv4 address or short DNS name.
+Edit `~/.config/fruitspy/config.json` only when the account needs different bind addresses, ports, limits, or timeouts. The public address remains a client APK patching choice.
 
 Enable user-service persistence and install the rootless unit:
 
@@ -251,7 +249,7 @@ Then run the same health check from a computer on another network:
 ```text
 cd server
 python -m fruitspy.healthcheck \
-  --config config.internet.example.json \
+  --config config.json \
   --host fn.example.net \
   --timeout 3
 ```

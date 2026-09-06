@@ -21,7 +21,7 @@ The LAN path has been exercised across an Android emulator and a Galaxy S4 for r
 - [Host FruitSpy on a VPS](docs/VPS_HOSTING.md) — Ubuntu/Debian installation, root or rootless systemd, cloud firewall, health checks, updates, and removal.
 - [Internet alpha deployment reference](DEPLOYMENT.md) — operator acceptance matrix, failure classification, and relay gate.
 
-Use a VPS when either game client will share the home network with a home-hosted FruitSpy server. The current Internet profile must observe each game client from outside that client's NAT; mixed local/remote play behind the server's router is not a supported acceptance topology.
+A home-hosted FruitSpy server supports two game clients on the same LAN: the server coordinates discovery and NatNeg, then gameplay flows directly between the clients' private endpoints. Use a VPS or two external client networks for Internet acceptance testing. Mixed local/remote play behind the server's router remains unvalidated because a local client's private or hairpin-NAT endpoint may be unreachable by the remote peer.
 
 ## Run the server
 
@@ -32,9 +32,13 @@ cd server
 python -m fruitspy --config config.json
 ```
 
-For protocol diagnostics, add `--verbose`. `config.json` is the dependency-free `lan` profile: it binds all service sockets and automatically selects the machine's local IPv4 address. Firewalls must allow the four ports listed above.
+For protocol diagnostics, add `--verbose`. `config.json` is the unified direct-connect configuration for local, home-hosted, and VPS deployments. It binds all four service sockets to `0.0.0.0`; firewalls must allow only the four ports listed above.
 
-`config.internet.example.json` is the guarded direct-connect Internet profile. Copy it to the ignored `config.local.json`, replace `games.example.net` with the public DNS name used by the patched clients, and expose TCP 6667/28910 plus UDP 27900/27901. Start it with:
+### Unified deployment model
+
+FruitSpy coordinates discovery and NatNeg, then publishes each game host's server-observed QR2 source address and port. It does not advertise its own hostname. The IPv4 address or short DNS name used to reach FruitSpy is selected when patching the APK, independently of the server configuration.
+
+Copy `config.json` to the ignored `config.local.json` only when a machine needs different bind addresses, ports, limits, or timeouts:
 
 ```text
 python -m fruitspy --config config.local.json
@@ -45,14 +49,14 @@ Do not expose a development checkout directly to the public Internet. Use an OS 
 Check all four local listeners after startup:
 
 ```text
-python -m fruitspy.healthcheck --config config.local.json
+python -m fruitspy.healthcheck --config config.json
 ```
 
 The command validates Availability/QR2 and NatNeg responses, checks both TCP listeners, and exits nonzero if any service is unavailable.
 
-### Internet admission controls
+### Admission controls
 
-Both profiles use the checked-in safety limits; Internet operators should tune them only from measured traffic:
+The unified configuration includes the checked-in safety limits; operators should tune them only from measured traffic:
 
 | Setting | Default | Behavior |
 | --- | ---: | --- |
@@ -68,7 +72,7 @@ Both profiles use the checked-in safety limits; Internet operators should tune t
 | `server_browser_idle_seconds` | 30 | Header and frame completion deadline |
 | `rate_limit_entry_seconds` | 120 | Idle lifetime for UDP source accounting |
 
-Rejected connections and protocol events use stable `service=... event=...` fields. In `internet` mode, verbose logs omit PeerChat message bodies, nicknames, quit reasons, and raw Server Browser frames. Source addresses remain available for abuse diagnosis and should be retained only as long as operationally necessary.
+Rejected connections and protocol events use stable `service=... event=...` fields. Verbose logs omit PeerChat message bodies, nicknames, quit reasons, and raw Server Browser frames. Source addresses remain available for abuse diagnosis and should be retained only as long as operationally necessary.
 
 ## Patch a locally owned APK
 
@@ -93,7 +97,7 @@ The suite covers cryptography, configuration validation, admission controls, con
 
 ## Online play
 
-LAN support remains the compatibility baseline. Online development now includes explicit deployment profiles, observed public-port publication, bounded protocol and state resources, TCP and UDP admission controls, connection deadlines, structured NatNeg lifecycle events, a four-protocol health check, systemd supervision, an nftables allowlist example, privacy-aware Internet diagnostics, and IPv4-or-DNS APK patch targets. Cross-network validation, relay fallback, and broader abuse controls remain tracked in [ROADMAP.md](ROADMAP.md).
+LAN support remains the compatibility baseline. Online development now includes one direct-connect configuration, server-observed endpoint publication, bounded protocol and state resources, TCP and UDP admission controls, connection deadlines, structured NatNeg lifecycle events, a four-protocol health check, systemd supervision, an nftables allowlist example, privacy-aware diagnostics, and IPv4-or-DNS APK patch targets. Cross-network validation, relay fallback, and broader abuse controls remain tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Release status
 

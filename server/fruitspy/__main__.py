@@ -44,12 +44,7 @@ async def run_server(config: ServerConfig) -> None:
         config.ports.server_browser_tcp,
     )
 
-    LOG.info(
-        "FruitSpy game=%s mode=%s advertise=%s",
-        config.game.name,
-        config.mode,
-        config.advertise_host,
-    )
+    LOG.info("FruitSpy game=%s", config.game.name)
     LOG.info("availability/QR UDP %s:%d", config.bind_host, config.ports.availability_qr_udp)
     LOG.info("PeerChat TCP %s:%d", config.bind_host, config.ports.peerchat_tcp)
     LOG.info("Server Browser TCP %s:%d", config.bind_host, config.ports.server_browser_tcp)

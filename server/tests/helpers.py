@@ -1,5 +1,3 @@
-from dataclasses import replace
-
 from fruitspy.config import (
     GameConfig,
     LimitConfig,
@@ -11,9 +9,7 @@ from fruitspy.config import (
 
 def test_config() -> ServerConfig:
     return ServerConfig(
-        mode="lan",
         bind_host="127.0.0.1",
-        advertise_host="127.0.0.1",
         game=GameConfig(
             name="FruitNinjaand",
             secret_key="nNfhSl",
@@ -48,12 +44,4 @@ def test_config() -> ServerConfig:
             reported_servers=2048,
             nat_sessions=4096,
         ),
-    )
-
-
-def internet_test_config() -> ServerConfig:
-    return replace(
-        test_config(),
-        mode="internet",
-        advertise_host="games.example.net",
     )
