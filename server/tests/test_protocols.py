@@ -230,8 +230,22 @@ class NatNegTests(unittest.TestCase):
     def test_pairing_emits_structured_lifecycle_events(self) -> None:
         protocol = NatNegProtocol(test_config(), ServerState(120, 60))
         cookie = b"LOG1"
-        first = MAGIC + bytes((3, NN_INIT)) + cookie + bytes((0, 0, 1)) + b"\x00" * 6
-        second = MAGIC + bytes((3, NN_INIT)) + cookie + bytes((0, 1, 1)) + b"\x00" * 6
+        first = (
+            MAGIC
+            + bytes((3, NN_INIT))
+            + cookie
+            + bytes((0, 0, 1))
+            + socket.inet_aton("192.168.1.10")
+            + struct.pack(">H", 6500)
+        )
+        second = (
+            MAGIC
+            + bytes((3, NN_INIT))
+            + cookie
+            + bytes((0, 1, 0))
+            + socket.inet_aton("192.168.2.20")
+            + struct.pack(">H", 32000)
+        )
 
         with self.assertLogs("fruitspy.natneg", level="INFO") as captured:
             protocol.handle_datagram(first, ("10.0.0.10", 40000))
@@ -241,6 +255,16 @@ class NatNegTests(unittest.TestCase):
         self.assertIn("event=session_created session=4c4f4731", output)
         self.assertIn("event=peer_updated session=4c4f4731", output)
         self.assertIn("event=peers_paired session=4c4f4731", output)
+        self.assertIn(
+            "peer=0 source=('10.0.0.10', 40000) port_type=0 "
+            "use_game_port=True local_endpoint=('192.168.1.10', 6500)",
+            output,
+        )
+        self.assertIn(
+            "peer=1 source=('10.0.0.20', 40001) port_type=0 "
+            "use_game_port=False local_endpoint=('192.168.2.20', 32000)",
+            output,
+        )
 
     def test_report_logs_negotiation_outcome(self) -> None:
         protocol = NatNegProtocol(test_config(), ServerState(120, 60))

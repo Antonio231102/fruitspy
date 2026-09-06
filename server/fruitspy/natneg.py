@@ -91,19 +91,29 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         packet_type = data[7]
         cookie = data[8:12]
         if packet_type == NN_INIT:
-            if len(data) < 14:
+            if len(data) < 21:
                 raise ValueError("short NatNeg init")
+            port_type = data[12]
             client_index = data[13]
+            use_game_port = data[14]
             if client_index not in (0, 1):
                 raise ValueError(f"invalid NatNeg client index: {client_index}")
+            local_endpoint = (
+                socket.inet_ntoa(data[15:19]),
+                struct.unpack_from(">H", data, 19)[0],
+            )
             is_new_session = cookie not in self.state.nat_sessions
             session = self.state.touch_nat_peer(cookie, client_index, addr, version)
             LOG.info(
-                "service=natneg event=%s session=%s peer=%d source=%s",
+                "service=natneg event=%s session=%s peer=%d source=%s "
+                "port_type=%d use_game_port=%s local_endpoint=%s",
                 "session_created" if is_new_session else "peer_updated",
                 cookie.hex(),
                 client_index,
                 addr,
+                port_type,
+                bool(use_game_port),
+                local_endpoint,
             )
             responses = [(self._with_type(data, NN_INIT_ACK), addr)]
             if 0 in session.peers and 1 in session.peers:
