@@ -9,8 +9,12 @@ from fruitspy.crypto import gsseckey
 from fruitspy.natneg import (
     MAGIC,
     NN_CONNECT,
+    NN_CONNECT_PING,
     NN_ERT_TEST,
     NN_INIT,
+    NN_INIT_ACK,
+    NN_REPORT,
+    NN_REPORT_ACK,
     NN_NATIFY_REQUEST,
     NatNegProtocol,
 )
@@ -36,7 +40,7 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
             local_addr=("127.0.0.1", 0),
         )
         self.qr_port = self.qr_transport.get_extra_info("sockname")[1]
-        self.nat_transport, _ = await loop.create_datagram_endpoint(
+        self.nat_transport, self.nat_protocol = await loop.create_datagram_endpoint(
             lambda: NatNegProtocol(self.config, self.state),
             local_addr=("127.0.0.1", 0),
         )
@@ -79,6 +83,42 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         await loop.sock_sendto(sock, data, ("127.0.0.1", port))
         response, _ = await asyncio.wait_for(loop.sock_recvfrom(sock, 2048), 2)
         return response
+
+    async def receive_udp_type(
+        self,
+        sock: socket.socket,
+        packet_type: int,
+        timeout: float = 2,
+    ) -> bytes:
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while True:
+            packet, _ = await asyncio.wait_for(
+                loop.sock_recvfrom(sock, 4096),
+                deadline - loop.time(),
+            )
+            if len(packet) > 7 and packet[7] == packet_type:
+                return packet
+
+    async def pair_nat_clients(self, cookie: bytes) -> tuple[socket.socket, socket.socket]:
+        first = self.udp_socket()
+        second = self.udp_socket()
+        first_init = MAGIC + bytes((3, NN_INIT)) + cookie + bytes((0, 0, 0)) + b"\x00" * 6
+        second_init = MAGIC + bytes((3, NN_INIT)) + cookie + bytes((0, 1, 0)) + b"\x00" * 6
+        first_ack = await self.exchange_udp(first, first_init, self.nat_port)
+        self.assertEqual(first_ack[7], NN_INIT_ACK)
+        loop = asyncio.get_running_loop()
+        await loop.sock_sendto(second, second_init, ("127.0.0.1", self.nat_port))
+        await self.receive_udp_type(first, NN_CONNECT)
+        second_packets = [
+            await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 2),
+            await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 2),
+        ]
+        self.assertEqual(
+            {packet[0][7] for packet in second_packets},
+            {NN_INIT_ACK, NN_CONNECT},
+        )
+        return first, second
 
     async def test_matchmaking_pipeline_reaches_peer_endpoints(self) -> None:
         availability_client = self.udp_socket()
@@ -167,6 +207,111 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first_connect[7], NN_CONNECT)
         self.assertIn(NN_CONNECT, [packet[7] for packet in second_packets])
 
+
+    async def test_auto_fallback_relays_only_paired_opaque_datagrams(self) -> None:
+        self.nat_protocol.config = replace(
+            self.config,
+            relay=replace(
+                self.config.relay,
+                fallback_seconds=0.1,
+                packet_bytes=900,
+                bytes_per_second=1024,
+                byte_burst=1024,
+            ),
+        )
+        first, second = await self.pair_nat_clients(b"RLY1")
+        first_ping = await self.receive_udp_type(first, NN_CONNECT_PING)
+        second_ping = await self.receive_udp_type(second, NN_CONNECT_PING)
+        self.assertEqual(first_ping[18:20], b"\x01\x00")
+        self.assertEqual(second_ping[18:20], b"\x01\x00")
+
+        loop = asyncio.get_running_loop()
+        await loop.sock_sendto(first, first_ping, ("127.0.0.1", self.nat_port))
+        await loop.sock_sendto(second, second_ping, ("127.0.0.1", self.nat_port))
+        await asyncio.sleep(0.01)
+
+        payload = b"hbgs-opaque-relay"
+        await loop.sock_sendto(first, payload, ("127.0.0.1", self.nat_port))
+        forwarded, source = await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 1)
+        self.assertEqual(forwarded, payload)
+        self.assertEqual(source[1], self.nat_port)
+
+        intruder = self.udp_socket()
+        await loop.sock_sendto(intruder, b"injected", ("127.0.0.1", self.nat_port))
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(loop.sock_recvfrom(first, 4096), 0.05)
+
+        await loop.sock_sendto(first, b"x" * 901, ("127.0.0.1", self.nat_port))
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 0.05)
+
+        await loop.sock_sendto(first, b"a" * 800, ("127.0.0.1", self.nat_port))
+        forwarded, _ = await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 1)
+        self.assertEqual(forwarded, b"a" * 800)
+        await loop.sock_sendto(first, b"b" * 800, ("127.0.0.1", self.nat_port))
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 0.05)
+
+    async def test_direct_success_report_cancels_auto_fallback(self) -> None:
+        first, _ = await self.pair_nat_clients(b"DIR1")
+        report = (
+            MAGIC
+            + bytes((3, NN_REPORT))
+            + b"DIR1"
+            + bytes((0, 0, 1))
+            + struct.pack("<II", 2, 2)
+            + b"FruitNinjaand\x00".ljust(50, b"\x00")
+        )
+        acknowledgement = await self.exchange_udp(first, report, self.nat_port)
+        self.assertEqual(acknowledgement[7], NN_REPORT_ACK)
+        with self.assertRaises(TimeoutError):
+            await self.receive_udp_type(first, NN_CONNECT_PING, 0.15)
+
+    async def test_direct_policy_never_allocates_fallback(self) -> None:
+        self.nat_protocol.config = replace(
+            self.config,
+            relay=replace(self.config.relay, policy="direct"),
+        )
+        first, _ = await self.pair_nat_clients(b"DIR2")
+        with self.assertRaises(TimeoutError):
+            await self.receive_udp_type(first, NN_CONNECT_PING, 0.15)
+
+    async def test_relay_has_hard_session_ttl(self) -> None:
+        self.nat_protocol.config = replace(
+            self.config,
+            relay=replace(
+                self.config.relay,
+                fallback_seconds=0.1,
+                session_seconds=0.1,
+            ),
+        )
+        first, second = await self.pair_nat_clients(b"TTL1")
+        first_ping = await self.receive_udp_type(first, NN_CONNECT_PING)
+        second_ping = await self.receive_udp_type(second, NN_CONNECT_PING)
+        loop = asyncio.get_running_loop()
+        await loop.sock_sendto(first, first_ping, ("127.0.0.1", self.nat_port))
+        await loop.sock_sendto(second, second_ping, ("127.0.0.1", self.nat_port))
+        await asyncio.sleep(0.12)
+        await loop.sock_sendto(first, b"expired", ("127.0.0.1", self.nat_port))
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 0.05)
+
+    async def test_relay_session_capacity_is_global(self) -> None:
+        self.nat_protocol.config = replace(
+            self.config,
+            relay=replace(
+                self.config.relay,
+                fallback_seconds=0.1,
+                sessions=1,
+            ),
+        )
+        first, second = await self.pair_nat_clients(b"CAP1")
+        await self.receive_udp_type(first, NN_CONNECT_PING)
+        await self.receive_udp_type(second, NN_CONNECT_PING)
+
+        third, _ = await self.pair_nat_clients(b"CAP2")
+        with self.assertRaises(TimeoutError):
+            await self.receive_udp_type(third, NN_CONNECT_PING, 0.2)
 
     async def test_server_info_request_returns_full_rules(self) -> None:
         source = ("10.0.0.10", 6500)

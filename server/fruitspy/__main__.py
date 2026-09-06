@@ -49,6 +49,12 @@ async def run_server(config: ServerConfig) -> None:
     LOG.info("PeerChat TCP %s:%d", config.bind_host, config.ports.peerchat_tcp)
     LOG.info("Server Browser TCP %s:%d", config.bind_host, config.ports.server_browser_tcp)
     LOG.info("NatNeg UDP %s:%d", config.bind_host, config.ports.natneg_udp)
+    LOG.info(
+        "Relay policy=%s fallback=%.1fs ttl=%ds",
+        config.relay.policy,
+        config.relay.fallback_seconds,
+        config.relay.session_seconds,
+    )
 
     try:
         await asyncio.gather(

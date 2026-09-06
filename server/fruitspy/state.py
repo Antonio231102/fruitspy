@@ -33,6 +33,8 @@ class NatSession:
     cookie: bytes
     peers: dict[int, NatPeer] = field(default_factory=dict)
     last_seen: float = field(default_factory=time.monotonic)
+    paired_at: float | None = None
+    successful_reports: set[int] = field(default_factory=set)
 
 
 class ServerState:

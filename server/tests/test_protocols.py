@@ -266,14 +266,14 @@ class NatNegTests(unittest.TestCase):
             output,
         )
 
-    def test_report_logs_negotiation_outcome(self) -> None:
+    def test_report_logs_boolean_negotiation_outcome(self) -> None:
         protocol = NatNegProtocol(test_config(), ServerState(120, 60))
         cookie = b"RSLT"
         packet = (
             MAGIC
             + bytes((3, NN_REPORT))
             + cookie
-            + bytes((0, 1, 3))
+            + bytes((0, 1, 0))
             + struct.pack("<II", 5, 3)
             + b"FruitNinjaand\x00".ljust(50, b"\x00")
         )
@@ -285,7 +285,7 @@ class NatNegTests(unittest.TestCase):
         self.assertEqual(responses, [(acknowledgement, ("10.0.0.10", 40000))])
         output = "\n".join(captured.output)
         self.assertIn("event=client_report session=52534c54", output)
-        self.assertIn("peer=1 result=ping_timeout result_code=3", output)
+        self.assertIn("peer=1 result=failure result_code=0", output)
         self.assertIn("nat_type=symmetric nat_type_code=5", output)
         self.assertIn("mapping=incremental mapping_code=3", output)
 

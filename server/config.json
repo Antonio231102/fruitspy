@@ -33,5 +33,14 @@
     "udp_tracked_sources": 4096,
     "reported_servers": 2048,
     "nat_sessions": 4096
+  },
+  "relay": {
+    "policy": "auto",
+    "fallback_seconds": 3,
+    "session_seconds": 900,
+    "packet_bytes": 4096,
+    "bytes_per_second": 262144,
+    "byte_burst": 524288,
+    "sessions": 1024
   }
 }

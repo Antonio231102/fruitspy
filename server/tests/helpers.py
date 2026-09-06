@@ -1,6 +1,7 @@
 from fruitspy.config import (
     GameConfig,
     LimitConfig,
+    RelayConfig,
     PortConfig,
     ServerConfig,
     TimeoutConfig,
@@ -43,5 +44,14 @@ def test_config() -> ServerConfig:
             udp_tracked_sources=4096,
             reported_servers=2048,
             nat_sessions=4096,
+        ),
+        relay=RelayConfig(
+            policy="auto",
+            fallback_seconds=0.1,
+            session_seconds=60,
+            packet_bytes=4096,
+            bytes_per_second=262144,
+            byte_burst=524288,
+            sessions=32,
         ),
     )

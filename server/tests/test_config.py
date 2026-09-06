@@ -14,6 +14,8 @@ class ConfigTests(unittest.TestCase):
         config = load_config(self.server_root / "config.json")
         self.assertEqual(config.bind_host, "0.0.0.0")
         self.assertEqual(config.limits.natneg_packet_bytes, 512)
+        self.assertEqual(config.relay.policy, "auto")
+        self.assertEqual(config.relay.fallback_seconds, 3)
 
     def test_removed_profile_fields_are_rejected(self) -> None:
         source = self.server_root / "config.json"
@@ -55,6 +57,24 @@ class ConfigTests(unittest.TestCase):
             invalid = Path(directory) / "invalid.json"
             invalid.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "peerchat_handshake_seconds"):
+                load_config(invalid)
+
+    def test_relay_policy_and_limits_are_validated(self) -> None:
+        source = self.server_root / "config.json"
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["relay"]["policy"] = "always"
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "relay policy"):
+                load_config(invalid)
+
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["relay"]["byte_burst"] = payload["relay"]["bytes_per_second"] - 1
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "byte_burst"):
                 load_config(invalid)
 
 
