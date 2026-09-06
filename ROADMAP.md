@@ -52,7 +52,7 @@ The direct-first service and bounded relay fallback are deployed:
 - Implemented GameSpy `PUSH_UPDATES` delivery for newly registered and changed QR2 hosts. Automatch now publishes the oldest compatible open host, preventing clients that searched an empty list simultaneously from both remaining hosts or cross-joining newly created rooms. The regression passed 20 repeated runs plus host-full rotation, host removal, and recovery checks. Through the public VPS, a synthetic same-egress two-browser/two-QR probe and three real-device games passed: simultaneous entry, Galaxy S4 first, and Galaxy S20 first.
 - Re-ran the real-device compatibility checkpoint after graceful-drain deployment. A same-LAN game and rematch completed without relay allocation. Wi-Fi/cellular games completed in both hosting directions; each established a relay after the three-second direct window, both peers reported success, 546 gameplay packets were forwarded with zero drops, and no protocol rejection counters increased. A post-match controlled restart retained both inactive relays for the configured 30-second drain window, closed them explicitly with `reason=server_drain_timeout`, returned relay/session gauges to zero, and left all four protocol health checks passing.
 
-Next: retain the direct and relay acceptance matrix while fuzzing every exposed protocol parser, then run capacity and failure-mode tests.
+Next: retain the direct and relay acceptance matrix while load-testing every configured capacity boundary, then exercise network and process failure modes.
 
 ## Phase 1 — Freeze the LAN baseline
 
@@ -142,7 +142,7 @@ Purpose: close the known matchmaking and abuse-resistance gaps before inviting a
 
 - [x] Add privacy-preserving metrics for active clients, rooms, discovery, NatNeg outcomes, relay outcomes, latency, errors, and admission rejection. A dependency-free Prometheus text endpoint listens on configurable loopback only, with a distinct port and bounded HTTP input. The fixed schema permits only closed server-defined label values and excludes addresses, connection/session IDs, cookies, nicknames, room and host names, messages, and payloads. Process-local gauges, counters, and fixed-bucket setup histograms reset on restart; external retention remains an operator responsibility.
 - [x] Add graceful drain behavior: stop new matchmaking while allowing existing direct games to continue and reporting relay shutdown explicitly. `SIGTERM`/`SIGINT` idempotently close matchmaking listeners and control connections, make QR2 unavailable, reject new NatNeg sessions, cancel pending fallback, and prohibit new relay allocation. Existing relays forward for a configurable 30-second window, then close with `reason=server_drain_timeout`; direct peer-to-peer games remain unaffected. Loopback metrics and structured events expose drain state and completion versus timeout, and systemd reserves five additional cleanup seconds.
-- [ ] Fuzz QR2, NatNeg, Server Browser, encrypted PeerChat, and filter inputs.
+- [x] Fuzz QR2, NatNeg, Server Browser, encrypted PeerChat, and filter inputs. A dependency-free deterministic corpus combines arbitrary bytes, boundary lengths, bit flips, truncation, insertion, deletion, duplication, repetition, and seed splicing. Parser-level campaigns enforce response-amplification and state-isolation invariants; live UDP, framed TCP, and encrypted PeerChat campaigns capture unhandled event-loop exceptions and prove listener recovery. Three extended seeds ran 10,000 cases per surface—161,250 parser and live-listener inputs including the additional network passes. Fuzzing found and fixed a non-ASCII QR challenge proof `TypeError` and an unregistered PeerChat `JOIN` state leak; focused regressions preserve both fixes.
 - [ ] Run concurrent connection, room, packet, and relay load tests to the configured capacity limits.
 - [ ] Exercise packet loss, reordering, duplicates, delay, abrupt client death, reconnect, process restart, and isolated relay-state loss.
 - [ ] Verify that the 15-minute hard relay TTL cannot terminate a legitimate supported game.
@@ -152,7 +152,7 @@ Exit criteria:
 
 - [x] Same-egress clients complete games in both hosting directions.
 - [ ] Resource use remains bounded under the documented load envelope.
-- [ ] Fuzzed and spoofed inputs do not crash listeners, cross-wire peers, or leak state across sessions.
+- [x] Fuzzed and spoofed inputs do not crash listeners, cross-wire peers, or leak state across sessions.
 - [ ] Operators can distinguish discovery, negotiation, direct-connect, relay, and client-side failures from metrics and logs.
 
 ## Phase 5 — Deterministic client patching and public release

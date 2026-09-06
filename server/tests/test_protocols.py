@@ -114,6 +114,22 @@ class AvailabilityQRTests(unittest.TestCase):
             "FruitNinjaandam",
         )
 
+    def test_non_ascii_qr_challenge_proof_is_rejected(self) -> None:
+        source = ("10.0.0.10", 30123)
+        instance = b"FUZZ"
+        challenge = self.protocol.handle_datagram(
+            b"\x03" + instance + b"gamename\x00FruitNinjaand\x00\x00",
+            source,
+        )
+        self.assertIsNotNone(challenge)
+        self.assertIsNone(
+            self.protocol.handle_datagram(
+                b"\x01" + instance + b"\xff\x00",
+                source,
+            )
+        )
+        self.assertFalse(self.state.reported_servers[source].registered)
+
     def test_oversized_qr_packet_is_rejected(self) -> None:
         packet = b"\x09" + b"x" * self.config.limits.qr_packet_bytes
         with self.assertRaisesRegex(ValueError, "exceeds configured limit"):

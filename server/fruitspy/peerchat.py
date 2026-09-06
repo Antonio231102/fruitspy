@@ -353,6 +353,9 @@ class PeerChatClient:
         await self.send(f":s 302 :+@{self.host}")
 
     async def cmd_join(self, params: str) -> None:
+        if not self.welcomed:
+            await self.numeric(451, ":You have not registered")
+            return
         channel_name = params.split()[0] if params else ""
         if not channel_name:
             await self.numeric(461, "JOIN :Not enough parameters")

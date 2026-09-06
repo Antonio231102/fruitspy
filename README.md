@@ -157,6 +157,19 @@ python -m unittest
 
 The suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, hard TTL, byte and packet limits, global relay capacity, and deterministic APK patching.
 
+The fuzz regressions use a deterministic mutation corpus against QR2 and NatNeg datagrams, Server Browser frames and filters, and encrypted PeerChat commands. The default case count keeps the complete suite fast:
+
+```text
+python -m unittest tests.test_fuzz
+```
+
+For an extended reproducible campaign, set `FRUITSPY_FUZZ_CASES` and `FRUITSPY_FUZZ_SEED` before running that module. For example on a POSIX shell:
+
+```text
+FRUITSPY_FUZZ_CASES=10000 FRUITSPY_FUZZ_SEED=0x10CEFADE \
+  python -m unittest tests.test_fuzz
+```
+
 ## Online play
 
 LAN support remains the compatibility baseline. The guarded direct-first service is deployed on a public IPv4 VPS with automatic relay fallback after three seconds. A controlled Wi-Fi/cellular pair that previously had a one-way direct path completed two consecutive relayed games and a reverse-host game. A LAN game under the same `auto` policy remained direct and allocated no relay. Evidence, configuration, and failure classification are in [DEPLOYMENT.md](DEPLOYMENT.md); further hardening remains tracked in [ROADMAP.md](ROADMAP.md).

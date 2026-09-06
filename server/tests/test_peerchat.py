@@ -101,6 +101,16 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_join_before_registration_is_rejected_without_state(self) -> None:
+        client = await EncryptedPeerClient.connect(self.port)
+        try:
+            await client.send("JOIN #unregistered")
+            response = await client.read_until("451 *")
+            self.assertIn("You have not registered", response)
+            self.assertFalse(self.service.channels)
+        finally:
+            await client.close()
+
     async def test_external_command_log_field_is_sanitized(self) -> None:
         client = await EncryptedPeerClient.connect(self.port)
         try:

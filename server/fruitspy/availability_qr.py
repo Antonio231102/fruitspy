@@ -225,7 +225,7 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
             return None
         response, _ = _read_cstring(data, 5)
         expected = gsseckey(server.challenge, self.config.game.secret_key)
-        if not secrets.compare_digest(response, expected):
+        if not response.isascii() or not secrets.compare_digest(response, expected):
             LOG.warning("invalid QR challenge response from %s", addr)
             return None
         self.state.register_server(addr)
