@@ -62,7 +62,7 @@ FruitSpy exposes Prometheus text metrics on the separate administrative listener
 curl --fail http://127.0.0.1:9108/metrics
 ```
 
-The schema is fixed and cardinality-bounded. It reports aggregate gauges for active clients, rooms, QR2 records, browser connections, NatNeg sessions, and relays; counters for discovery, negotiation, relay, errors, admission rejections, and amplification suppression; and fixed-bucket direct/relay setup latency histograms. Labels come only from closed server-defined sets. Metrics never contain source addresses, connection or session identifiers, cookies, nicknames, room names, hostnames, message bodies, or packet payloads.
+The schema is fixed and cardinality-bounded. It reports aggregate gauges for drain state, active clients, rooms, QR2 records, browser connections, NatNeg sessions, and relays; counters for drain lifecycle, discovery, negotiation, relay, errors, admission rejections, and amplification suppression; and fixed-bucket direct/relay setup latency histograms. Labels come only from closed server-defined sets. Metrics never contain source addresses, connection or session identifiers, cookies, nicknames, room names, hostnames, message bodies, or packet payloads.
 
 Metrics exist only in process memory and reset when FruitSpy restarts. FruitSpy does not persist or transmit them. An external scraper controls any retention and must apply its own access and deletion policy.
 
@@ -102,6 +102,7 @@ The unified configuration includes the checked-in safety limits; operators shoul
 | `server_browser_idle_seconds` | 30 | Header and frame completion deadline |
 | `rate_limit_entry_seconds` | 120 | Idle lifetime for UDP source accounting |
 | `udp_source_ban_seconds` | 60 | Temporary ban duration after repeated per-source rate violations |
+| `drain_seconds` | `30` | Maximum time existing gameplay relays may continue after graceful drain starts |
 | `metrics.bind_host` | `127.0.0.1` | Loopback-only administrative metrics listener; non-loopback addresses are rejected |
 | `metrics.port` | `9108` | Prometheus text endpoint at `/metrics`; must differ from every public service port |
 
@@ -116,6 +117,18 @@ The state sweeper removes expired QR2 registrations and NatNeg setup sessions on
 QR2 and NatNeg share one global packet budget and one per-source table, so moving traffic between the two UDP ports cannot bypass admission. A source that continues transmitting after exhausting its burst is temporarily banned across both listeners after `udp_source_violation_burst` consecutive rejections. An accepted packet resets that violation run. Global exhaustion does not penalize individual sources. Structured `udp_admission_rejected` events identify global limits, source limits, newly started bans, active bans, and source-table capacity without parsing packet contents.
 
 UDP response generation is fail-closed against reflection amplification. QR2 counts each reply against the triggering datagram and permits at most a fixed `2:1` byte ratio; the measured worst case is the 11-byte unavailable response to a 6-byte availability request. NatNeg counts every immediate datagram produced by one request, including packets sent to both peers, and permits at most `3:1`; pairing produces the measured maximum of 61 response bytes from a 21-byte `INIT`. Automatic fallback remains within the same cumulative boundary: two minimum `INIT` claims produce 122 bytes total across acknowledgements, connect packets, and relay pings from 42 bytes received. A response set that exceeds its limit is suppressed atomically, and an over-limit fallback cannot allocate relay state. Authenticated gameplay relay forwarding is exactly `1:1` and remains subject to the separate packet-size and byte-rate limits.
+
+### Graceful service drain
+
+`SIGTERM` and `SIGINT` idempotently move FruitSpy from running to draining. Use the supervisor rather than killing the Python process directly:
+
+```text
+sudo systemctl stop fruitspy.service
+```
+
+The process immediately closes the PeerChat and Server Browser listeners and their active control connections. QR2 availability replies become unavailable, new QR2 registration traffic is ignored, new NatNeg cookies are rejected, scheduled relay fallbacks are canceled, and no relay allocation may start. An already-created NatNeg session may still finish its direct setup; established direct gameplay continues peer-to-peer and is unaffected by process exit.
+
+Existing gameplay relays continue forwarding for at most `drain_seconds`. The process exits early when the final relay closes naturally. At the deadline, remaining relays close with `reason=server_drain_timeout`, and the server exits. During this window the loopback metrics endpoint remains available, `fruitspy_server_draining` is `1`, and `fruitspy_drain_events_total` records whether the drain completed or timed out. The checked-in systemd units allow five additional seconds beyond the configured 30-second relay deadline for process cleanup.
 
 ### Anonymous authentication boundary
 

@@ -13,8 +13,8 @@ ExecStartPost=/opt/fruitspy/venv/bin/python -m fruitspy.healthcheck --config /et
 Restart=on-failure
 RestartSec=2s
 TimeoutStartSec=30s
-TimeoutStopSec=10s
-KillSignal=SIGINT
+TimeoutStopSec=35s
+KillSignal=SIGTERM
 
 NoNewPrivileges=yes
 PrivateDevices=yes

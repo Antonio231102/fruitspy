@@ -409,6 +409,50 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
             metrics,
         )
 
+    async def test_drain_keeps_existing_relay_until_bounded_close(self) -> None:
+        self.nat_protocol.config = replace(
+            self.config,
+            relay=replace(self.config.relay, fallback_seconds=0.05),
+        )
+        first, second = await self.pair_nat_clients(b"DRAN")
+        first_ping = await self.receive_udp_type(first, NN_CONNECT_PING)
+        second_ping = await self.receive_udp_type(second, NN_CONNECT_PING)
+        loop = asyncio.get_running_loop()
+        await loop.sock_sendto(first, first_ping, ("127.0.0.1", self.nat_port))
+        await loop.sock_sendto(second, second_ping, ("127.0.0.1", self.nat_port))
+        await asyncio.sleep(0)
+
+        self.assertTrue(self.nat_protocol.drain.request())
+        self.assertEqual(self.nat_protocol.begin_drain(), 1)
+
+        rejected = self.udp_socket()
+        await loop.sock_sendto(
+            rejected,
+            MAGIC
+            + bytes((3, NN_INIT))
+            + b"DROP"
+            + bytes((0, 0, 0))
+            + b"\x00" * 6,
+            ("127.0.0.1", self.nat_port),
+        )
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(loop.sock_recvfrom(rejected, 4096), 0.05)
+
+        await loop.sock_sendto(first, b"existing-relay", ("127.0.0.1", self.nat_port))
+        forwarded, _ = await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 1)
+        self.assertEqual(forwarded, b"existing-relay")
+        self.assertFalse(await self.nat_protocol.wait_for_relays(0.01))
+
+        with self.assertLogs("fruitspy.natneg", level="INFO") as captured:
+            self.nat_protocol.close_relays("server_drain_timeout")
+
+        self.assertEqual(self.nat_protocol.active_relays, 0)
+        self.assertTrue(await self.nat_protocol.wait_for_relays(0.01))
+        self.assertIn(
+            "reason=server_drain_timeout",
+            "\n".join(captured.output),
+        )
+
     async def test_active_relay_survives_nat_session_expiry(self) -> None:
         self.nat_protocol.config = replace(
             self.config,

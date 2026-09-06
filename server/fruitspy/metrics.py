@@ -23,6 +23,17 @@ class _HistogramValue:
 
 _METRICS = (
     _MetricSpec(
+        "fruitspy_server_draining",
+        "Whether the process is draining and refusing new matchmaking.",
+        "gauge",
+    ),
+    _MetricSpec(
+        "fruitspy_drain_events_total",
+        "Graceful drain lifecycle events.",
+        "counter",
+        (("event", ("started", "completed", "timed_out")),),
+    ),
+    _MetricSpec(
         "fruitspy_peerchat_clients",
         "Current admitted PeerChat connections.",
         "gauge",
@@ -118,7 +129,10 @@ _METRICS = (
         "counter",
         (
             ("service", ("qr", "natneg", "peerchat", "server_browser")),
-            ("reason", ("malformed", "amplification", "capacity", "budget")),
+            (
+                "reason",
+                ("malformed", "amplification", "capacity", "budget", "draining"),
+            ),
         ),
     ),
     _MetricSpec(

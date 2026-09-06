@@ -26,6 +26,7 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.limits.udp_global_burst, 8192)
         self.assertEqual(config.limits.udp_source_violation_burst, 30)
         self.assertEqual(config.timeouts.udp_source_ban_seconds, 60)
+        self.assertEqual(config.timeouts.drain_seconds, 30)
         self.assertEqual(config.relay.policy, "auto")
         self.assertEqual(config.relay.fallback_seconds, 3)
         self.assertEqual(config.metrics.bind_host, "127.0.0.1")
@@ -102,6 +103,22 @@ class ConfigTests(unittest.TestCase):
                 ValueError,
                 "state_expiry_interval_seconds",
             ):
+                load_config(invalid)
+
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["timeouts"]["drain_seconds"] = 0
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "drain_seconds"):
+                load_config(invalid)
+
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["timeouts"]["drain_seconds"] = 31
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "drain_seconds"):
                 load_config(invalid)
         payload = json.loads(source.read_text(encoding="utf-8"))
         payload["limits"]["udp_global_packets_per_second"] = (

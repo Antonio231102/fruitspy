@@ -14,6 +14,7 @@ from .admission import (
 )
 from .config import ServerConfig
 from .crypto import gsseckey
+from .drain import DrainController
 from .metrics import MetricsRegistry
 from .log_fields import sanitize_log_field
 from .state import Address, ServerState
@@ -58,10 +59,12 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         state: ServerState,
         udp_admission: UdpAdmission | None = None,
         metrics: MetricsRegistry | None = None,
+        drain: DrainController | None = None,
     ) -> None:
         self.config = config
         self.state = state
         self.metrics = metrics or state.metrics
+        self.drain = drain or DrainController(self.metrics)
         self.transport: asyncio.DatagramTransport | None = None
         self.udp_admission = udp_admission or create_udp_admission(config)
 
@@ -115,13 +118,24 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
             if len(data) < 6:
                 raise ValueError("short availability packet")
             game_name, _ = _read_cstring(data, 5)
-            status = 0 if game_name == self.config.game.name else 1
+            if self.drain.is_draining:
+                self._record_drain_rejection(addr)
+                status = 1
+            else:
+                status = 0 if game_name == self.config.game.name else 1
             LOG.info(
                 "service=qr event=availability source=%s accepted=%s",
                 addr,
                 status == 0,
             )
             return self._bounded_response(data, availability_response(status), addr)
+        if self.drain.is_draining and packet_type in {
+            PACKET_HEARTBEAT,
+            PACKET_CHALLENGE,
+            PACKET_KEEPALIVE,
+        }:
+            self._record_drain_rejection(addr)
+            return None
         if packet_type == PACKET_HEARTBEAT:
             return self._bounded_response(data, self._heartbeat(data, addr), addr)
         if packet_type == PACKET_CHALLENGE:
@@ -139,6 +153,14 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
                 addr,
             )
         return None
+
+    def _record_drain_rejection(self, addr: Address) -> None:
+        LOG.info("service=qr event=request_rejected source=%s reason=draining", addr)
+        self.metrics.increment(
+            "fruitspy_protocol_rejections_total",
+            service="qr",
+            reason="draining",
+        )
 
     def _bounded_response(
         self,

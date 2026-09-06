@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from .admission import ConnectionAdmission, TokenBucket
 from .config import ServerConfig
+from .drain import DrainController
 from .crypto import PeerChatCipher
 from .log_fields import sanitize_log_field
 from .metrics import MetricsRegistry
@@ -45,11 +46,14 @@ class PeerChatServer:
         self,
         config: ServerConfig,
         metrics: MetricsRegistry | None = None,
+        drain: DrainController | None = None,
     ) -> None:
         self.config = config
         self.metrics = metrics or MetricsRegistry()
+        self.drain = drain or DrainController(self.metrics)
         self.clients: dict[str, PeerChatClient] = {}
         self.channels: dict[str, ChatChannel] = {}
+        self._connections: set[PeerChatClient] = set()
         self.admission = ConnectionAdmission(
             config.limits.peerchat_connections,
             config.limits.connections_per_source,
@@ -57,6 +61,22 @@ class PeerChatServer:
 
     async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         client = PeerChatClient(self, reader, writer)
+        if self.drain.is_draining:
+            LOG.info(
+                "service=peerchat event=connection_rejected source=%s reason=draining",
+                client.host,
+            )
+            self.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="peerchat",
+                reason="draining",
+            )
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), 1)
+            except (TimeoutError, ConnectionError):
+                writer.transport.abort()
+            return
         if not self.admission.acquire(client.host):
             LOG.warning(
                 "service=peerchat event=admission_rejected source=%s",
@@ -73,6 +93,7 @@ class PeerChatServer:
             except (TimeoutError, ConnectionError):
                 writer.transport.abort()
             return
+        self._connections.add(client)
         self.metrics.set_gauge(
             "fruitspy_peerchat_clients",
             self.admission.total,
@@ -102,6 +123,7 @@ class PeerChatServer:
             try:
                 await client.disconnect("Client exited")
             finally:
+                self._connections.discard(client)
                 self.admission.release(client.host)
                 self.metrics.set_gauge(
                     "fruitspy_peerchat_clients",
@@ -123,6 +145,14 @@ class PeerChatServer:
                 len(self.channels),
             )
         return channel
+    async def begin_drain(self) -> None:
+        clients = list(self._connections)
+        if clients:
+            await asyncio.gather(
+                *(client.disconnect("Server draining") for client in clients),
+                return_exceptions=True,
+            )
+
 
 
 class PeerChatClient:

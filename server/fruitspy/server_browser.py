@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 
 from .admission import ConnectionAdmission
 from .config import ServerConfig
+from .drain import DrainController
 from .crypto import EnctypeX
 from .log_fields import sanitize_log_field
 from .metrics import MetricsRegistry
@@ -75,14 +76,17 @@ class ServerBrowserServer:
         config: ServerConfig,
         state: ServerState,
         metrics: MetricsRegistry | None = None,
+        drain: DrainController | None = None,
     ) -> None:
         self.config = config
         self.state = state
         self.metrics = metrics or state.metrics
+        self.drain = drain or DrainController(self.metrics)
         self.admission = ConnectionAdmission(
             config.limits.server_browser_connections,
             config.limits.connections_per_source,
         )
+        self._connections: set[asyncio.StreamWriter] = set()
 
     async def handle(
         self,
@@ -92,6 +96,23 @@ class ServerBrowserServer:
         peer = writer.get_extra_info("peername")
         source = str(peer[0]) if peer else "0.0.0.0"
         connection_id = secrets.token_hex(8)
+        if self.drain.is_draining:
+            LOG.info(
+                "service=server_browser event=connection_rejected "
+                "source=%s reason=draining",
+                source,
+            )
+            self.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="server_browser",
+                reason="draining",
+            )
+            writer.close()
+            try:
+                await asyncio.wait_for(writer.wait_closed(), 1)
+            except (TimeoutError, ConnectionError):
+                writer.transport.abort()
+            return
         if not self.admission.acquire(source):
             LOG.warning(
                 "service=server_browser event=admission_rejected source=%s",
@@ -108,6 +129,7 @@ class ServerBrowserServer:
             except (TimeoutError, ConnectionError):
                 writer.transport.abort()
             return
+        self._connections.add(writer)
         self.metrics.set_gauge(
             "fruitspy_server_browser_connections",
             self.admission.total,
@@ -234,6 +256,7 @@ class ServerBrowserServer:
             except (TimeoutError, ConnectionError):
                 writer.transport.abort()
             self.admission.release(source)
+            self._connections.discard(writer)
             self.metrics.set_gauge(
                 "fruitspy_server_browser_connections",
                 self.admission.total,
@@ -243,6 +266,24 @@ class ServerBrowserServer:
                 connection_id,
                 source,
             )
+
+    async def begin_drain(self) -> None:
+        writers = list(self._connections)
+        for writer in writers:
+            writer.close()
+        if not writers:
+            return
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(
+                    *(writer.wait_closed() for writer in writers),
+                    return_exceptions=True,
+                ),
+                1,
+            )
+        except TimeoutError:
+            for writer in writers:
+                writer.transport.abort()
 
     def handle_request(self, packet: bytes, source_ip: str) -> bytes | None:
         response, _, _ = self._handle_list_request(packet, source_ip)

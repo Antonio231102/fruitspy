@@ -131,6 +131,29 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_drain_closes_existing_and_rejects_new_connections(self) -> None:
+        client = await self.connect_player("draining-player")
+        try:
+            self.assertTrue(self.service.drain.request())
+            await self.service.begin_drain()
+            self.assertEqual(await asyncio.wait_for(client.reader.read(), 1), b"")
+
+            reader, writer = await asyncio.open_connection("127.0.0.1", self.port)
+            self.assertEqual(await asyncio.wait_for(reader.read(), 1), b"")
+            writer.close()
+            await writer.wait_closed()
+            await asyncio.sleep(0)
+
+            metrics = self.service.metrics.render().decode("utf-8")
+            self.assertIn("fruitspy_peerchat_clients 0", metrics)
+            self.assertIn(
+                'fruitspy_protocol_rejections_total'
+                '{service="peerchat",reason="draining"} 1',
+                metrics,
+            )
+        finally:
+            await client.close()
+
     async def test_welcomed_connection_remains_open_without_traffic(self) -> None:
         client = await EncryptedPeerClient.connect(self.port)
         try:

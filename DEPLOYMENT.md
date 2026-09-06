@@ -96,6 +96,8 @@ The unit runs with a dynamic unprivileged identity, a read-only filesystem view,
 
 For accounts without root access, `deploy/fruitspy.user.service` runs from `~/fruitspy` with configuration in `~/.config/fruitspy/config.json`. Enable user lingering before logout and use `systemctl --user`; see the [VPS hosting guide](docs/VPS_HOSTING.md#rootless-systemd-alternative). Rootless deployment cannot change the host firewall, so an administrator or provider control panel must permit the four service ports.
 
+The checked-in units send `SIGTERM` and allow 35 seconds for shutdown: 30 seconds for the configured relay drain plus five seconds for cleanup. `systemctl stop` or `systemctl restart` closes matchmaking listeners and control connections immediately while allowing established relays to forward until they close or reach the drain deadline. Direct games remain peer-to-peer and continue without the service. Do not use `kill -9` for routine deployment.
+
 Inspect structured events without enabling payload-level diagnostics:
 
 ```text
@@ -109,6 +111,8 @@ curl --fail http://127.0.0.1:9108/metrics
 ```
 
 The metrics listener is separate from the four GameSpy listeners. Configuration validation requires `metrics.bind_host` to be a loopback IP address and rejects a metrics port that matches any public service port. Never open TCP 9108 in the host or provider firewall; use an authenticated SSH tunnel if a remote scraper needs access. The fixed schema excludes IP addresses, connection/session identifiers, cookies, nicknames, room names, hostnames, messages, and payloads. Values are process-local and reset on restart; any external retention is the operator's responsibility.
+
+During a graceful stop, `fruitspy_server_draining` becomes `1`. `fruitspy_drain_events_total` distinguishes a completed drain from a timeout, while `relay_closed` logs identify forced closures with `reason=server_drain_timeout`.
 
 ## Health check
 

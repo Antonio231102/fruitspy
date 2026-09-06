@@ -171,6 +171,8 @@ sudo systemctl status fruitspy.service
 
 The service runs a four-protocol readiness check after startup. It waits up to 15 seconds for Availability/QR2, PeerChat, Server Browser, and NatNeg. If startup health fails, systemd marks the service failed and applies its restart policy.
 
+
+For maintenance or deployment, use `systemctl stop` or `systemctl restart`; do not kill the Python process directly. The unit sends `SIGTERM`, FruitSpy immediately refuses new matchmaking, and existing direct games continue peer-to-peer. Active relays may continue for the configured 30-second drain window before closing explicitly with `reason=server_drain_timeout`. The unit's 35-second stop deadline leaves five seconds for cleanup.
 View recent logs:
 
 ```text
@@ -192,6 +194,8 @@ curl --fail http://127.0.0.1:9108/metrics
 ```
 
 Do not open TCP 9108 in UFW or the provider firewall. The endpoint has fixed, bounded labels and excludes source addresses, cookies, identifiers, nicknames, room names, hostnames, message content, and packet payloads. It resets on service restart and stores nothing on disk. Use an authenticated SSH tunnel rather than exposing it when remote collection is required.
+
+While a stop is draining active relays, the metrics endpoint remains available with `fruitspy_server_draining 1`. Drain counters and structured `drain_started`, `drain_completed`, or `drain_timed_out` events distinguish clean maintenance from a forced relay deadline.
 
 ### Rootless systemd alternative
 

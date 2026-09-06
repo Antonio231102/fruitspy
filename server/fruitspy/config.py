@@ -58,6 +58,7 @@ class TimeoutConfig:
     server_browser_idle_seconds: int
     rate_limit_entry_seconds: int
     udp_source_ban_seconds: int
+    drain_seconds: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,6 +236,8 @@ def load_config(path: str | Path) -> ServerConfig:
         raise ValueError("relay byte_burst must be at least bytes_per_second")
     if not 1 <= relay.sessions <= 100_000:
         raise ValueError("relay sessions must be between 1 and 100000")
+    if not 1 <= timeouts.drain_seconds <= 30:
+        raise ValueError("drain_seconds must be between 1 and 30")
     for name, value in (
         ("reported_server_seconds", timeouts.reported_server_seconds),
         ("nat_session_seconds", timeouts.nat_session_seconds),

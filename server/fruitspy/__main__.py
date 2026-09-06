@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import asyncio
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from .admission import create_udp_admission
 from .availability_qr import AvailabilityQRProtocol
 from .config import ServerConfig, load_config
+from .drain import DrainController
 from .metrics import MetricsHttpServer, MetricsRegistry
 from .natneg import NatNegProtocol
 from .peerchat import PeerChatServer
@@ -17,9 +20,37 @@ from .state import ServerState
 LOG = logging.getLogger("fruitspy")
 
 
+def _install_signal_handlers(
+    loop: asyncio.AbstractEventLoop,
+    drain: DrainController,
+) -> Callable[[], None]:
+    loop_signals: list[signal.Signals] = []
+    fallback_handlers: list[tuple[signal.Signals, object]] = []
+    for watched_signal in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(watched_signal, drain.request)
+        except NotImplementedError:
+            previous = signal.signal(
+                watched_signal,
+                lambda *_: loop.call_soon_threadsafe(drain.request),
+            )
+            fallback_handlers.append((watched_signal, previous))
+        else:
+            loop_signals.append(watched_signal)
+
+    def restore() -> None:
+        for watched_signal in loop_signals:
+            loop.remove_signal_handler(watched_signal)
+        for watched_signal, previous in fallback_handlers:
+            signal.signal(watched_signal, previous)
+
+    return restore
+
+
 async def run_server(config: ServerConfig) -> None:
     loop = asyncio.get_running_loop()
     metrics = MetricsRegistry()
+    drain = DrainController(metrics)
     state = ServerState(
         reported_server_ttl=config.timeouts.reported_server_seconds,
         nat_session_ttl=config.timeouts.nat_session_seconds,
@@ -29,20 +60,32 @@ async def run_server(config: ServerConfig) -> None:
     )
     udp_admission = create_udp_admission(config)
     qr_transport, _ = await loop.create_datagram_endpoint(
-        lambda: AvailabilityQRProtocol(config, state, udp_admission, metrics),
+        lambda: AvailabilityQRProtocol(
+            config,
+            state,
+            udp_admission,
+            metrics,
+            drain,
+        ),
         local_addr=(config.bind_host, config.ports.availability_qr_udp),
     )
-    nat_transport, _ = await loop.create_datagram_endpoint(
-        lambda: NatNegProtocol(config, state, udp_admission, metrics),
+    nat_transport, natneg = await loop.create_datagram_endpoint(
+        lambda: NatNegProtocol(
+            config,
+            state,
+            udp_admission,
+            metrics,
+            drain,
+        ),
         local_addr=(config.bind_host, config.ports.natneg_udp),
     )
-    peerchat = PeerChatServer(config, metrics)
+    peerchat = PeerChatServer(config, metrics, drain)
     peerchat_listener = await asyncio.start_server(
         peerchat.handle,
         config.bind_host,
         config.ports.peerchat_tcp,
     )
-    server_browser = ServerBrowserServer(config, state, metrics)
+    server_browser = ServerBrowserServer(config, state, metrics, drain)
     browser_listener = await asyncio.start_server(
         server_browser.handle,
         config.bind_host,
@@ -55,6 +98,7 @@ async def run_server(config: ServerConfig) -> None:
         config.metrics.port,
         limit=4096,
     )
+    restore_signal_handlers = _install_signal_handlers(loop, drain)
 
     LOG.info("FruitSpy game=%s", config.game.name)
     LOG.info("availability/QR UDP %s:%d", config.bind_host, config.ports.availability_qr_udp)
@@ -67,31 +111,73 @@ async def run_server(config: ServerConfig) -> None:
         config.metrics.port,
     )
     LOG.info(
-        "Relay policy=%s fallback=%.1fs ttl=%ds",
+        "Relay policy=%s fallback=%.1fs ttl=%ds drain=%ds",
         config.relay.policy,
         config.relay.fallback_seconds,
         config.relay.session_seconds,
+        config.timeouts.drain_seconds,
     )
 
-    try:
-        async with asyncio.TaskGroup() as tasks:
-            tasks.create_task(peerchat_listener.serve_forever())
-            tasks.create_task(browser_listener.serve_forever())
-            tasks.create_task(metrics_listener.serve_forever())
-            tasks.create_task(
-                state.expire_periodically(
-                    config.timeouts.state_expiry_interval_seconds,
-                )
+    service_tasks = [
+        asyncio.create_task(peerchat_listener.serve_forever()),
+        asyncio.create_task(browser_listener.serve_forever()),
+        asyncio.create_task(metrics_listener.serve_forever()),
+        asyncio.create_task(
+            state.expire_periodically(
+                config.timeouts.state_expiry_interval_seconds,
             )
+        ),
+    ]
+    drain_task = asyncio.create_task(drain.wait())
+    try:
+        completed, _ = await asyncio.wait(
+            [drain_task, *service_tasks],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        if drain_task not in completed:
+            for task in completed:
+                task.result()
+            raise RuntimeError("FruitSpy service task stopped unexpectedly")
+
+        peerchat_listener.close()
+        browser_listener.close()
+        await peerchat_listener.wait_closed()
+        await browser_listener.wait_closed()
+        await asyncio.gather(
+            peerchat.begin_drain(),
+            server_browser.begin_drain(),
+        )
+        active_relays = natneg.begin_drain()
+        LOG.info(
+            "service=server event=relay_drain_wait active_relays=%d "
+            "timeout_seconds=%d",
+            active_relays,
+            config.timeouts.drain_seconds,
+        )
+        relays_drained = await natneg.wait_for_relays(
+            config.timeouts.drain_seconds,
+        )
+        if not relays_drained:
+            LOG.warning(
+                "service=server event=relay_drain_timeout active_relays=%d",
+                natneg.active_relays,
+            )
+            natneg.close_relays("server_drain_timeout")
+        drain.complete(timed_out=not relays_drained)
     finally:
         peerchat_listener.close()
         browser_listener.close()
         metrics_listener.close()
         qr_transport.close()
         nat_transport.close()
+        drain_task.cancel()
+        for task in service_tasks:
+            task.cancel()
+        await asyncio.gather(drain_task, *service_tasks, return_exceptions=True)
         await peerchat_listener.wait_closed()
         await browser_listener.wait_closed()
         await metrics_listener.wait_closed()
+        restore_signal_handlers()
 
 
 def main() -> None:

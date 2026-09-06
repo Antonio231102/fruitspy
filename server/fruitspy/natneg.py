@@ -14,6 +14,7 @@ from .admission import (
     udp_response_within_amplification_limit,
 )
 from .config import ServerConfig
+from .drain import DrainController
 from .log_fields import sanitize_log_field
 from .metrics import MetricsRegistry
 from .state import Address, NatPeerClaimRejected, ServerState
@@ -98,17 +99,25 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         state: ServerState,
         udp_admission: UdpAdmission | None = None,
         metrics: MetricsRegistry | None = None,
+        drain: DrainController | None = None,
     ) -> None:
         self.config = config
         self.state = state
         self.metrics = metrics or state.metrics
+        self.drain = drain or DrainController(self.metrics)
         self.transport: asyncio.DatagramTransport | None = None
         self.udp_admission = udp_admission or create_udp_admission(config)
         self._relay_expirations: dict[bytes, asyncio.TimerHandle] = {}
         self._fallbacks: dict[bytes, asyncio.TimerHandle] = {}
         self._relays: dict[bytes, _RelaySession] = {}
         self._relay_by_address: dict[Address, tuple[bytes, int]] = {}
+        self._relays_empty = asyncio.Event()
+        self._relays_empty.set()
         self._next_relay_expiry = 0.0
+
+    @property
+    def active_relays(self) -> int:
+        return len(self._relays)
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
@@ -177,6 +186,21 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         version = data[6]
         packet_type = data[7]
         cookie = data[8:12]
+        if (
+            self.drain.is_draining
+            and packet_type == NN_INIT
+            and cookie not in self.state.nat_sessions
+        ):
+            LOG.info(
+                "service=natneg event=request_rejected source=%s reason=draining",
+                addr,
+            )
+            self.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="natneg",
+                reason="draining",
+            )
+            return []
         if packet_type == NN_INIT:
             if len(data) < 21:
                 raise ValueError("short NatNeg init")
@@ -339,6 +363,27 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             return []
         return []
 
+    def begin_drain(self) -> int:
+        for handle in self._fallbacks.values():
+            handle.cancel()
+        self._fallbacks.clear()
+        if not self._relays:
+            self._relays_empty.set()
+        return len(self._relays)
+
+    async def wait_for_relays(self, timeout: float) -> bool:
+        if not self._relays:
+            return True
+        try:
+            await asyncio.wait_for(self._relays_empty.wait(), timeout)
+        except TimeoutError:
+            return False
+        return not self._relays
+
+    def close_relays(self, reason: str) -> None:
+        for cookie in list(self._relays):
+            self._finish_relay(cookie, reason)
+
     def _bounded_responses(
         self,
         request: bytes,
@@ -483,6 +528,21 @@ class NatNegProtocol(asyncio.DatagramProtocol):
 
     def _activate_relay(self, cookie: bytes) -> None:
         self._fallbacks.pop(cookie, None)
+        if self.drain.is_draining:
+            LOG.info(
+                "service=natneg event=relay_unavailable session=%s reason=draining",
+                cookie.hex(),
+            )
+            self.metrics.increment(
+                "fruitspy_relay_events_total",
+                event="unavailable",
+            )
+            self.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="natneg",
+                reason="draining",
+            )
+            return
         if self.transport is None or self.config.relay.policy != "auto":
             return
         session = self.state.nat_sessions.get(cookie)
@@ -572,6 +632,7 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             last_seen=now,
         )
         self._relays[cookie] = relay
+        self._relays_empty.clear()
         self._relay_expirations[cookie] = asyncio.get_running_loop().call_later(
             self.config.relay.session_seconds,
             self._finish_relay,
@@ -737,6 +798,8 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         handle = self._fallbacks.pop(cookie, None)
         if handle is not None:
             handle.cancel()
+        if not self._relays:
+            self._relays_empty.set()
         self.metrics.set_gauge("fruitspy_natneg_relays", len(self._relays))
         self.metrics.increment(
             "fruitspy_relay_events_total",

@@ -33,6 +33,7 @@ def test_config() -> ServerConfig:
             server_browser_idle_seconds=30,
             rate_limit_entry_seconds=120,
             udp_source_ban_seconds=60,
+            drain_seconds=1,
         ),
         limits=LimitConfig(
             peerchat_line_bytes=4096,
