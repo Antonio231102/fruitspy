@@ -23,6 +23,12 @@ The LAN path has been exercised across an Android emulator and a Galaxy S4 for r
 
 A home-hosted FruitSpy server keeps mutually reachable clients on direct UDP. If the direct NatNeg exchange has not succeeded after the configured deadline, both clients are moved to a bounded relay on the existing UDP 27901 listener. Use a VPS or two external client networks for Internet acceptance testing; mixed local/remote play behind a home router still requires explicit validation.
 
+### Resource expectations
+
+The latest production-limit load campaign peaked at **42,112 KiB (about 41.1 MiB) of RAM** and completed in about seven seconds on the project VPS. It exercised every configured capacity boundary, including hundreds of TCP connections, thousands of matchmaking records, and 1,024 relay allocations.
+
+For self-hosting, keep the supplied **256 MiB process memory limit**. A VPS with **at least 512 MiB of total RAM** is a conservative starting point because the operating system and administration services also need memory. The 41.1 MiB measurement includes the test runner and synthetic clients, but the capacity scenarios ran separately rather than saturating every limit simultaneously. It is a planning reference, not a guaranteed maximum. Sustained relay bandwidth and CPU throughput require separate measurement.
+
 ## Run the server
 
 Python 3.11 or newer is required.

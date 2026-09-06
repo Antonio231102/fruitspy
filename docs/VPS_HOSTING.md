@@ -17,7 +17,7 @@ You need:
 
 The DNS name patched into the APK must be fewer than 20 ASCII characters. FruitSpy currently requires IPv4; an IPv6-only VPS is not supported.
 
-A low-end general-purpose instance should be adequate for a controlled two-player alpha, but FruitSpy has not been publicly load-tested. Start with the checked-in 256 MiB process memory limit and increase capacity only from measurements.
+A low-end general-purpose instance should be adequate for a controlled FruitSpy deployment. The latest production-limit campaign peaked at **42,112 KiB (about 41.1 MiB) of RAM** while exercising every configured capacity boundary. Keep the checked-in **256 MiB process memory limit** and use **at least 512 MiB of total VPS RAM** as a conservative starting point so the operating system retains headroom. The test measurement includes its synthetic clients, and its capacity scenarios ran separately rather than all at once; it is not a guaranteed worst-case maximum. CPU throughput and sustained relay bandwidth remain separate sizing limits.
 
 ## 1. Create and secure the VPS
 
