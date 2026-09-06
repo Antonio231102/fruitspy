@@ -4,7 +4,15 @@ import unittest
 
 from fruitspy.availability_qr import AvailabilityQRProtocol
 from fruitspy.crypto import EnctypeX, gsseckey
-from fruitspy.natneg import MAGIC, NN_CONNECT, NN_INIT, NN_INIT_ACK, NatNegProtocol
+from fruitspy.natneg import (
+    MAGIC,
+    NN_CONNECT,
+    NN_INIT,
+    NN_INIT_ACK,
+    NN_REPORT,
+    NN_REPORT_ACK,
+    NatNegProtocol,
+)
 from fruitspy.server_browser import ServerBrowserServer
 from fruitspy.state import ServerState
 from tests.helpers import test_config
@@ -233,6 +241,36 @@ class NatNegTests(unittest.TestCase):
         self.assertIn("event=session_created session=4c4f4731", output)
         self.assertIn("event=peer_updated session=4c4f4731", output)
         self.assertIn("event=peers_paired session=4c4f4731", output)
+
+    def test_report_logs_negotiation_outcome(self) -> None:
+        protocol = NatNegProtocol(test_config(), ServerState(120, 60))
+        cookie = b"RSLT"
+        packet = (
+            MAGIC
+            + bytes((3, NN_REPORT))
+            + cookie
+            + bytes((0, 1, 3))
+            + struct.pack("<II", 5, 3)
+            + b"FruitNinjaand\x00".ljust(50, b"\x00")
+        )
+
+        with self.assertLogs("fruitspy.natneg", level="INFO") as captured:
+            responses = protocol.handle_datagram(packet, ("10.0.0.10", 40000))
+
+        acknowledgement = packet[:7] + bytes((NN_REPORT_ACK,)) + packet[8:]
+        self.assertEqual(responses, [(acknowledgement, ("10.0.0.10", 40000))])
+        output = "\n".join(captured.output)
+        self.assertIn("event=client_report session=52534c54", output)
+        self.assertIn("peer=1 result=ping_timeout result_code=3", output)
+        self.assertIn("nat_type=symmetric nat_type_code=5", output)
+        self.assertIn("mapping=incremental mapping_code=3", output)
+
+    def test_short_report_is_rejected(self) -> None:
+        protocol = NatNegProtocol(test_config(), ServerState(120, 60))
+        packet = MAGIC + bytes((3, NN_REPORT)) + b"SHRT"
+
+        with self.assertRaisesRegex(ValueError, "short NatNeg report"):
+            protocol.handle_datagram(packet, ("10.0.0.10", 40000))
 
     def test_oversized_natneg_packet_is_rejected(self) -> None:
         config = test_config()

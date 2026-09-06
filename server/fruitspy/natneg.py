@@ -24,6 +24,35 @@ NN_REPORT_ACK = 14
 NN_PREINIT = 15
 NN_PREINIT_ACK = 16
 
+NEGOTIATION_RESULTS = (
+    "success",
+    "deadbeat_partner",
+    "init_timeout",
+    "ping_timeout",
+    "unknown_error",
+    "no_result",
+)
+NAT_TYPES = (
+    "none",
+    "firewall_only",
+    "full_cone",
+    "restricted_cone",
+    "port_restricted_cone",
+    "symmetric",
+    "unknown",
+)
+MAPPING_SCHEMES = (
+    "unrecognized",
+    "private_as_public",
+    "consistent_port",
+    "incremental",
+    "mixed",
+)
+
+
+def _enum_name(names: tuple[str, ...], value: int) -> str:
+    return names[value] if value < len(names) else "unknown"
+
 
 class NatNegProtocol(asyncio.DatagramProtocol):
     def __init__(self, config: ServerConfig, state: ServerState) -> None:
@@ -107,11 +136,24 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             )
             return [(self._with_type(data, NN_ERT_TEST), addr)]
         if packet_type == NN_REPORT:
+            if len(data) < 23:
+                raise ValueError("short NatNeg report")
+            client_index = data[13]
+            result = data[14]
+            nat_type, mapping_scheme = struct.unpack_from("<II", data, 15)
             LOG.info(
-                "service=natneg event=client_report session=%s source=%s bytes=%d",
+                "service=natneg event=client_report session=%s source=%s "
+                "peer=%d result=%s result_code=%d nat_type=%s nat_type_code=%d "
+                "mapping=%s mapping_code=%d",
                 cookie.hex(),
                 addr,
-                len(data),
+                client_index,
+                _enum_name(NEGOTIATION_RESULTS, result),
+                result,
+                _enum_name(NAT_TYPES, nat_type),
+                nat_type,
+                _enum_name(MAPPING_SCHEMES, mapping_scheme),
+                mapping_scheme,
             )
             return [(self._with_type(data, NN_REPORT_ACK), addr)]
         if packet_type == NN_PREINIT:

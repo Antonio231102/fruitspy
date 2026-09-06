@@ -138,6 +138,8 @@ A direct-connect pass requires discovery, room exchange, NatNeg pairing, gamepla
 - NatNeg pairs but gameplay times out: direct traversal failed after endpoint exchange; likely symmetric NAT, CGNAT, or a restrictive mobile network.
 - Local health passes but both remote clients fail: upstream firewall, security group, port forwarding, or DNS.
 
+Each `service=natneg event=client_report` record includes the client index, negotiation result, NAT type, and mapping scheme without retaining the game name or packet payload. `result=success` confirms the client's direct peer handshake; `result=ping_timeout` means the server exchanged endpoints but the peers could not pass direct UDP pings. NAT type and mapping values are client-reported diagnostics; unknown numeric values remain visible through the corresponding `_code` fields.
+
 Do not weaken admission limits or disable the firewall to hide a classified failure. Capture the exact failed stage and change only the responsible boundary.
 
 ## Rollback
