@@ -138,9 +138,19 @@ A direct-connect pass requires discovery, room exchange, NatNeg pairing, gamepla
 - NatNeg pairs but gameplay times out: direct traversal failed after endpoint exchange; likely symmetric NAT, CGNAT, or a restrictive mobile network.
 - Local health passes but both remote clients fail: upstream firewall, security group, port forwarding, or DNS.
 
-Each `service=natneg event=client_report` record includes the client index, negotiation result, NAT type, and mapping scheme without retaining the game name or packet payload. `result=success` confirms the client's direct peer handshake; `result=ping_timeout` means the server exchanged endpoints but the peers could not pass direct UDP pings. NAT type and mapping values are client-reported diagnostics; unknown numeric values remain visible through the corresponding `_code` fields.
+Each `service=natneg event=client_report` record includes the client index, negotiation result, NAT type, and mapping scheme without retaining the game name or packet payload. Treat these client-reported values as advisory rather than proof of a bidirectional path. A successful gameplay trace produced `result=deadbeat_partner`, while a failed Wi-Fi/cellular trace produced `result=success` from both clients. Packet capture or completed gameplay is the acceptance signal; unknown numeric values remain visible through the corresponding `_code` fields.
 
 Do not weaken admission limits or disable the firewall to hide a classified failure. Capture the exact failed stage and change only the responsible boundary.
+
+### Captured traversal boundary
+
+A controlled comparison isolated the Internet failure after successful discovery and endpoint exchange:
+
+- In the known-good LAN trace, the negotiated game sockets exchanged three NatNeg `CONNECT` datagrams in each direction. Five seconds later they exchanged `hbgs` setup traffic, followed by 328 non-NatNeg datagrams over the same endpoints during completed gameplay.
+- In the failed Wi-Fi/cellular trace, the Wi-Fi client sent nine NatNeg `CONNECT` datagrams to the server-observed cellular endpoint at approximately 715 ms intervals. It received no peer datagram, and no `hbgs` or gameplay packet followed.
+- Both Internet clients reached the VPS, joined the same NatNeg session, and used `use_game_port=False`. The Wi-Fi client reported full-cone NAT with consistent-port mapping; the cellular client reported unknown NAT with an unrecognized mapping.
+
+The endpoint exchange is correct, but the direct UDP path is not bidirectional. This rules out FruitSpy listener health and GT2 initialization as the immediate boundary. The trace cannot distinguish endpoint-dependent carrier NAT from carrier filtering, but either condition requires a relay or a mutually reachable overlay network; changing the four GameSpy service ports will not fix it.
 
 ## Rollback
 
@@ -152,4 +162,4 @@ Remove the four FruitSpy firewall rules and DNS record after the test window. Di
 
 ## Relay gate
 
-Do not begin relay deployment until the direct-connect matrix has been executed. A relay is justified only for sessions where discovery, PeerChat, and NatNeg pairing succeed but direct gameplay consistently fails. That evidence determines the relay protocol boundary and prevents online-only behavior from weakening the LAN path.
+The Wi-Fi/cellular comparison satisfies the relay evidence gate: discovery, PeerChat, host publication, and NatNeg pairing completed, but the negotiated peer path remained one-way and never reached `hbgs`. Implement relay fallback only after a bounded direct attempt, keep direct UDP as the default, and leave the proven LAN path unchanged.

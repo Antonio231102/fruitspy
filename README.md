@@ -97,7 +97,7 @@ The suite covers cryptography, configuration validation, admission controls, con
 
 ## Online play
 
-LAN support remains the compatibility baseline. Online development now includes one direct-connect configuration, server-observed endpoint publication, bounded protocol and state resources, TCP and UDP admission controls, connection deadlines, structured NatNeg lifecycle events, a four-protocol health check, systemd supervision, an nftables allowlist example, privacy-aware diagnostics, and IPv4-or-DNS APK patch targets. Cross-network validation, relay fallback, and broader abuse controls remain tracked in [ROADMAP.md](ROADMAP.md).
+LAN support remains the compatibility baseline. The guarded direct-connect service is deployed on a public IPv4 VPS with server-observed endpoint publication, bounded protocol and state resources, admission controls, connection deadlines, structured NatNeg diagnostics, four-protocol health checks, systemd supervision, and firewall guidance. A Wi-Fi/cellular trial completed matchmaking but exposed a one-way peer UDP path, so direct play remains network-dependent and the next milestone is bounded relay fallback. Evidence and failure classification are in [DEPLOYMENT.md](DEPLOYMENT.md); implementation work remains tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Release status
 

@@ -33,7 +33,7 @@ Initial online deployment should remain a single process on one host with a stat
 
 ## Development status
 
-Online direct-connect foundation is in progress:
+Online direct-connect foundation is deployed:
 
 - Replaced the split `lan` and `internet` profiles with one direct-connect configuration.
 - Published the server-observed QR2 source address and port for every host, including hosts behind port-mapping NAT.
@@ -43,8 +43,11 @@ Online direct-connect foundation is in progress:
 - Extended the APK patch target to accept a short DNS name or IPv4 address.
 - Added regression coverage for unified configuration validation, observed endpoint encoding, QR2 relay routing, oversized inputs, admission limits, UDP rate limiting and refill, idle clients, malformed-datagram recovery, and post-rejection listener recovery.
 - Added a four-protocol readiness command, hardened systemd unit, nftables allowlist example, guarded deployment runbook, two-network acceptance matrix, and structured NatNeg lifecycle events.
+- Deployed the guarded service on a public IPv4 VPS and verified all four protocols from both the host and an external network.
+- Added structured NatNeg `INIT` socket metadata and client outcome logging.
+- Compared a completed LAN game with a failed Wi-Fi/cellular session. The LAN sockets exchanged NatNeg, `hbgs`, and gameplay traffic; the Internet trace sent nine peer-directed NatNeg packets without receiving one and never reached `hbgs`.
 
-Next: install the guarded deployment on a stable public IPv4 host and execute the two-network direct-connect matrix. Relay work remains gated on those results so direct-connect failures can be separated from deployment errors and LAN behavior remains unchanged.
+Next: implement a bounded relay fallback for peers whose direct NatNeg path does not become bidirectional. Preserve direct UDP as the default and do not alter the proven LAN path.
 
 ## Phase 1 — Freeze the LAN baseline
 
@@ -81,6 +84,8 @@ Exit criteria:
 - Malformed-packet and connection-flood tests leave all four listeners responsive.
 
 Known limitation: direct traversal will fail for some symmetric NAT, carrier-grade NAT, and restrictive mobile networks. That is an expected alpha limitation, not a reason to change the LAN path.
+
+Observed limitation: a Wi-Fi/cellular trial completed every server-side phase but produced only one-way peer UDP traffic. The direct-connect exit criterion remains unmet for that network pair, and the evidence gate for Phase 3 relay work is satisfied.
 
 ## Phase 3 — Relay fallback
 

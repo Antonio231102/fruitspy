@@ -296,9 +296,11 @@ Success in the staging room alone is not a direct gameplay pass. The direct-conn
 | PeerChat fails | TCP 6667 and admission events |
 | No game appears | QR2 registration, reported-server expiry, and TCP 28910 |
 | NatNeg never pairs | UDP 27901, timestamps, and matching NatNeg session identifiers |
-| NatNeg pairs but gameplay times out | Symmetric NAT, CGNAT, or restrictive client networks; record this for relay design |
+| NatNeg pairs but gameplay times out | Capture the client game socket; repeated outbound NatNeg `CONNECT` packets with no inbound peer packet identify a one-way direct path caused by NAT or carrier filtering |
 
 Do not solve a failed check by disabling the entire firewall or removing admission limits. Identify whether the failure is local process readiness, public reachability, matchmaking, NatNeg, or direct gameplay.
+
+Do not use `client_report result=success` alone as a gameplay pass. Fruit Ninja's report values proved inconsistent with observed packet flow; completed gameplay or a bidirectional trace through the `hbgs` transition is authoritative. See the [captured traversal boundary](../DEPLOYMENT.md#captured-traversal-boundary).
 
 ## Update FruitSpy
 
