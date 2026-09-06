@@ -90,7 +90,7 @@ FruitSpy requires these inbound ports:
 | UDP | 27900 | Availability and QR2 |
 | TCP | 6667 | PeerChat |
 | TCP | 28910 | Server Browser |
-| UDP | 27901 | NatNeg |
+| UDP | 27901 | NatNeg and fallback gameplay relay |
 
 On Windows, open PowerShell as Administrator and run:
 
@@ -123,7 +123,7 @@ Create four port-forwarding entries targeting the reserved LAN address of the se
 | 28910 | 28910 | TCP | Server LAN address |
 | 27901 | 27901 | UDP | Server LAN address |
 
-Do not select `TCP/UDP` when the router lets you choose the exact protocol. Do not forward gameplay port 6500 to the FruitSpy computer; FruitSpy uses NatNeg to exchange the game clients' observed endpoints.
+Do not select `TCP/UDP` when the router lets you choose the exact protocol. Do not forward gameplay port 6500 to the FruitSpy computer. Direct-capable clients remain peer-to-peer; automatic fallback carries opaque gameplay through the existing UDP 27901 mapping.
 
 Some routers have both an ISP gateway and a separate Wi-Fi router. If both devices perform NAT, either forward through both devices or place one in bridge/access-point mode.
 
@@ -205,21 +205,22 @@ Use game devices on networks outside the server's home LAN:
 2. Have device A create an online match.
 3. Have device B discover and join it.
 4. Confirm the server log contains QR2 registration, Server Browser discovery, two PeerChat participants, and `service=natneg event=peers_paired`.
-5. Complete three consecutive games and a rematch.
-6. Repeat with device B hosting.
-7. Run the health check again.
+5. Confirm either `direct_established` or the complete `relay_activated`, `relay_ready`, and `relay_established` sequence.
+6. Complete three consecutive games and a rematch.
+7. Repeat with device B hosting.
+8. Run the health check again.
 
 A staging-room connection by itself is not a gameplay pass.
 
-## Mixed-network client limitation
+## Mixed-network validation
 
-Do not use one game client on the same LAN as the self-hosted server and another on an external network for the first direct-connect test. The server can observe the local client's private or hairpin-NAT endpoint and publish an address that the remote peer cannot reach.
+One local and one external client may begin with endpoints that cannot reach each other. With `relay.policy=auto`, FruitSpy preserves a successful direct path but moves an unconfirmed session to the server's UDP 27901 relay after the configured fallback interval.
 
 Supported test arrangements:
 
-- Server and both clients at home: use the unified configuration; gameplay runs directly over their private endpoints.
-- Home server with both clients on external networks: use the same unified configuration.
-- Home server with one local and one remote client: currently router-dependent and not a supported acceptance test.
+- Server and both clients at home: use the unified configuration; successful direct negotiation cancels relay fallback.
+- Home server with both clients on external networks: use the same configuration; unreachable direct paths can fall back through UDP 27901.
+- Home server with one local and one remote client: relay fallback should remove the direct-endpoint limitation, but this topology remains unvalidated.
 
 ## Troubleshooting
 
@@ -231,7 +232,7 @@ Supported test arrangements:
 | PeerChat fails | TCP 6667 and connection admission logs |
 | No games appear | QR2 registration and TCP 28910 |
 | NatNeg never pairs | UDP 27901 and both clients' timestamps/session identifiers |
-| NatNeg pairs but gameplay times out | Symmetric NAT, CGNAT, or restrictive mobile networking; this is evidence for the future relay milestone |
+| NatNeg pairs but gameplay times out | Require either `direct_established` or the full `relay_activated`, `relay_ready`, and `relay_established` sequence |
 | It worked yesterday | Check whether the public IPv4 address or DNS record changed |
 
 Do not disable all firewall protection as a troubleshooting step. Change one boundary at a time and rerun the health check.

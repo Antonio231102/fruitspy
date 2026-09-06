@@ -286,7 +286,7 @@ Outgoing reliable data is copied after the eight-byte header and retained in a p
 
 The same receive loop compares the first six bytes against the NatNeg magic before dispatching ordinary peer data. This is consistent with GameSpy's design: NatNeg opens the route, while the game/transport SDK owns gameplay reliability and packet channels.
 
-The library contains `gti2CreateSocket` diagnostics and GT2 connection logic. GameSpyDocs concentrates on backend services and does not fully document this Fruit Ninja/Mortar payload layer. OpenSpy does not need to relay or understand it when direct peer connectivity succeeds.
+The library contains `gti2CreateSocket` diagnostics and GT2 connection logic. GameSpyDocs concentrates on backend services and does not fully document this Fruit Ninja/Mortar payload layer. A relay does not need to understand it: after the NatNeg callback selects the relay endpoint, FruitSpy forwards the subsequent datagrams opaquely.
 
 ### 7. Fruit Ninja gameplay layer
 
@@ -303,7 +303,7 @@ Strings such as `wave_counts_%s`, `waveIdx`, `game_count`, scores, misses, and t
 | QR reporting | `%s.master.gamespy.com`, QR keys, `openstaging`, challenge error | GameSpyDocs QR chapters; OpenSpy `qr/Client.cpp` | Strong match. Required for host registration. |
 | Server Browsing | `%s.ms%d.gamespy.com`, filters, group fields | GameSpyDocs request layout; OpenSpy `serverbrowsing/Client.cpp` | Strong match. Required for discovery/group listing. |
 | NAT Negotiation | Three hosts and exact six-byte magic | GameSpyDocs NAT chapter; OpenSpy `natneg/structs.h` and `Client.cpp` | Exact SDK family. Required for internet peers behind NAT. |
-| Direct transport | UDP 6500 host path, `mortar`, `hbgs`, GT2 diagnostics | Only broadly covered as GameSpy Transport/Peer; not handled by OpenSpy backend | APK-specific work remains, but no central relay is indicated. |
+| Direct transport | UDP 6500 host path, `mortar`, `hbgs`, GT2 diagnostics | Only broadly covered as GameSpy Transport/Peer; not handled by OpenSpy backend | Direct is the normal path; an unreachable path can be relayed opaquely after NatNeg selects the server endpoint. |
 | Presence/account services | No GPCM/GPSP hostname | Repositories document them generically | Probably unnecessary for the first restoration target. |
 
 ## How useful OpenSpy is in practice
@@ -344,23 +344,23 @@ The initial registration blocker is resolved:
 
 The registration and primary Peer parameters are resolved. Remaining compatibility questions are optional CD-key reachability, exact client expectations for room metadata, and Fruit Ninja packet-channel/message layouts. Product and namespace IDs are not passed by the confirmed anonymous Peer path.
 
-### Standalone LAN server preparation
+### Standalone server implementation
 
 A separate implementation now exists under `server/`. It has no dependency on OpenSpy or another revival network at runtime. The process exposes:
 
 - Availability and QR on UDP 27900.
 - Encrypted GameSpy PeerChat on TCP 6667.
 - Enctype-X Server Browsing on TCP 28910.
-- LAN-focused NAT Negotiation on UDP 27901.
-- Shared in-memory QR, server-list, chat-room, and NatNeg state.
+- Direct-first NAT Negotiation and bounded fallback relay on UDP 27901.
+- Shared in-memory QR, server-list, chat-room, NatNeg, and ephemeral relay state.
 
-The implementation uses `FruitNinjaand` / `nNfhSl`, anonymous PeerChat, two-player automatching, QR challenge validation, staging-host publication, encrypted Server Browser responses, and cookie-based NatNeg pairing. Run it from `server/` with:
+The implementation uses `FruitNinjaand` / `nNfhSl`, anonymous PeerChat, two-player automatching, QR challenge validation, staging-host publication, encrypted Server Browser responses, cookie-based NatNeg pairing, and automatic relay fallback for an unconfirmed direct path. Run it from `server/` with:
 
 ```text
 python -m fruitspy --config config.json
 ```
 
-The automated suite exercises GameSpy cryptography, encrypted two-user PeerChat, QR registration, encrypted host discovery, and two-client NatNeg pairing. A live Galaxy S4/x86-emulator run also completed QR discovery, staging-room exchange, NatNeg pairing, direct peer traversal, and bidirectional `hbgs` GameSpy Transport traffic.
+The automated suite exercises GameSpy cryptography, encrypted two-user PeerChat, QR registration, encrypted host discovery, two-client NatNeg pairing, direct-path cancellation, endpoint-authenticated opaque relay forwarding, hard relay TTL, byte and packet limits, and relay capacity. Live validation completed direct LAN gameplay under the `auto` policy plus two consecutive Wi-Fi/cellular relay games and a reverse-host relay game.
 
 ### Patched APK boundary
 

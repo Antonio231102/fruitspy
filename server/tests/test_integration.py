@@ -231,10 +231,15 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.sleep(0.01)
 
         payload = b"hbgs-opaque-relay"
-        await loop.sock_sendto(first, payload, ("127.0.0.1", self.nat_port))
-        forwarded, source = await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 1)
+        with self.assertLogs("fruitspy.natneg", level="INFO") as captured:
+            await loop.sock_sendto(first, payload, ("127.0.0.1", self.nat_port))
+            forwarded, source = await asyncio.wait_for(
+                loop.sock_recvfrom(second, 4096),
+                1,
+            )
         self.assertEqual(forwarded, payload)
         self.assertEqual(source[1], self.nat_port)
+        self.assertIn("event=relay_forwarding", "\n".join(captured.output))
 
         intruder = self.udp_socket()
         await loop.sock_sendto(intruder, b"injected", ("127.0.0.1", self.nat_port))

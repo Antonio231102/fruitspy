@@ -33,7 +33,7 @@ Initial online deployment should remain a single process on one host with a stat
 
 ## Development status
 
-Online direct-connect foundation is deployed:
+The direct-first service and bounded relay fallback are deployed:
 
 - Replaced the split `lan` and `internet` profiles with one direct-connect configuration.
 - Published the server-observed QR2 source address and port for every host, including hosts behind port-mapping NAT.
@@ -46,8 +46,11 @@ Online direct-connect foundation is deployed:
 - Deployed the guarded service on a public IPv4 VPS and verified all four protocols from both the host and an external network.
 - Added structured NatNeg `INIT` socket metadata and client outcome logging.
 - Compared a completed LAN game with a failed Wi-Fi/cellular session. The LAN sockets exchanged NatNeg, `hbgs`, and gameplay traffic; the Internet trace sent nine peer-directed NatNeg packets without receiving one and never reached `hbgs`.
+- Added automatic fallback on the existing UDP 27901 listener. A synthetic NatNeg peer response moves only unconfirmed sessions to an opaque two-endpoint relay after three seconds.
+- Bounded relay allocations by hard TTL, packet size, per-endpoint byte rate and burst, global session count, exact endpoint admission, and NatNeg endpoint proof.
+- Completed two consecutive Wi-Fi/cellular games plus a reverse-host game through the relay. Re-ran LAN gameplay under the same `auto` policy; both direct reports arrived within 27 ms and no relay was allocated.
 
-Next: implement a bounded relay fallback for peers whose direct NatNeg path does not become bidirectional. Preserve direct UDP as the default and do not alter the proven LAN path.
+Next: retain the direct and relay acceptance matrix while beginning Phase 4 public-service hardening.
 
 ## Phase 1 — Freeze the LAN baseline
 
@@ -93,11 +96,13 @@ Purpose: support peers that cannot establish a direct UDP path.
 
 - Capture and document NatNeg behavior across full-cone, restricted-cone, port-restricted, symmetric, and carrier-grade NAT where test access is available.
 - Add an `auto` NatNeg policy: attempt direct traversal first, then return a relay endpoint only after a bounded timeout.
-- Implement a minimal UDP session relay keyed by a server-generated, short-lived session token and the two observed peer endpoints.
+- Implement a minimal UDP session relay keyed by the existing NatNeg cookie and the two server-observed endpoints. Require both endpoints to complete the expected NatNeg exchange before forwarding gameplay.
 - Allocate relay state with hard TTL, byte-rate limits, packet-size limits, and global capacity limits.
-- Prevent third-party injection by accepting traffic only from the paired endpoints after each endpoint proves possession of the session token or completes the expected NatNeg exchange.
+- Prevent third-party injection by accepting traffic only from the paired, server-observed endpoints after each returns the expected cookie-bearing NatNeg ping.
 - Keep relay payloads opaque. The relay must not parse or modify `hbgs` gameplay messages.
 - Expose relay use, duration, bytes, drops, and expiry as aggregate metrics.
+
+Status: implemented and deployed. The available matrix covers direct LAN, residential Wi-Fi to cellular relay, consecutive relay games, and both hosting directions. Additional NAT types remain opportunistic coverage rather than a release blocker.
 
 Exit criteria:
 

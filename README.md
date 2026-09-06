@@ -9,9 +9,9 @@ Implemented services:
 - Availability and QR2 on UDP 27900
 - PeerChat on TCP 6667
 - Server Browsing on TCP 28910
-- NAT Negotiation on UDP 27901
+- NAT Negotiation and fallback gameplay relay on UDP 27901
 - Encrypted PeerChat and Enctype-X Server Browser responses
-- Two-player staging rooms, host publication, and direct peer traversal
+- Two-player staging rooms, host publication, direct peer traversal, and bounded automatic relay fallback
 
 The LAN path has been exercised across an Android emulator and a Galaxy S4 for repeated games. After matchmaking, gameplay traffic flows directly between the devices.
 
@@ -19,9 +19,9 @@ The LAN path has been exercised across an Android emulator and a Galaxy S4 for r
 
 - [Host FruitSpy at home](docs/HOME_HOSTING.md) — Windows-oriented router, firewall, DNS, startup, and external-test instructions.
 - [Host FruitSpy on a VPS](docs/VPS_HOSTING.md) — Ubuntu/Debian installation, root or rootless systemd, cloud firewall, health checks, updates, and removal.
-- [Internet alpha deployment reference](DEPLOYMENT.md) — operator acceptance matrix, failure classification, and relay gate.
+- [Internet deployment reference](DEPLOYMENT.md) — operator acceptance matrix, relay behavior, failure classification, and limits.
 
-A home-hosted FruitSpy server supports two game clients on the same LAN: the server coordinates discovery and NatNeg, then gameplay flows directly between the clients' private endpoints. Use a VPS or two external client networks for Internet acceptance testing. Mixed local/remote play behind the server's router remains unvalidated because a local client's private or hairpin-NAT endpoint may be unreachable by the remote peer.
+A home-hosted FruitSpy server keeps mutually reachable clients on direct UDP. If the direct NatNeg exchange has not succeeded after the configured deadline, both clients are moved to a bounded relay on the existing UDP 27901 listener. Use a VPS or two external client networks for Internet acceptance testing; mixed local/remote play behind a home router still requires explicit validation.
 
 ## Run the server
 
@@ -32,13 +32,13 @@ cd server
 python -m fruitspy --config config.json
 ```
 
-For protocol diagnostics, add `--verbose`. `config.json` is the unified direct-connect configuration for local, home-hosted, and VPS deployments. It binds all four service sockets to `0.0.0.0`; firewalls must allow only the four ports listed above.
+For protocol diagnostics, add `--verbose`. `config.json` is the unified direct-first configuration for local, home-hosted, and VPS deployments. It binds all four service sockets to `0.0.0.0`; firewalls must allow only the four ports listed above.
 
 ### Unified deployment model
 
-FruitSpy coordinates discovery and NatNeg, then publishes each game host's server-observed QR2 source address and port. It does not advertise its own hostname. The IPv4 address or short DNS name used to reach FruitSpy is selected when patching the APK, independently of the server configuration.
+FruitSpy coordinates discovery and NatNeg, then publishes each game host's server-observed QR2 source address and port. Direct-capable peers remain peer-to-peer. Under `relay.policy=auto`, a session that has not reported direct success before `fallback_seconds` receives a synthetic NatNeg peer response from UDP 27901; subsequent opaque game datagrams are forwarded only between that session's two proven endpoints. The IPv4 address or short DNS name used to reach FruitSpy is selected when patching the APK, independently of server socket binding.
 
-Copy `config.json` to the ignored `config.local.json` only when a machine needs different bind addresses, ports, limits, or timeouts:
+Copy `config.json` to the ignored `config.local.json` only when a machine needs different bind addresses, ports, timeouts, admission limits, or relay policy:
 
 ```text
 python -m fruitspy --config config.local.json
@@ -68,6 +68,13 @@ The unified configuration includes the checked-in safety limits; operators shoul
 | `udp_tracked_sources` | 4096 | Hard bound on each UDP rate-limit table |
 | `reported_servers` | 2048 | Hard bound on QR2 server registrations |
 | `nat_sessions` | 4096 | Hard bound on concurrent NatNeg cookie sessions |
+| `relay.policy` | `auto` | Direct-first negotiation with bounded fallback; set `direct` to disable relay allocation |
+| `relay.fallback_seconds` | 3 | Delay before an unconfirmed direct path moves to relay |
+| `relay.session_seconds` | 900 | Hard lifetime of each relay allocation |
+| `relay.packet_bytes` | 4096 | Maximum forwarded UDP payload |
+| `relay.bytes_per_second` | 262144 | Per-endpoint relay byte-token refill rate |
+| `relay.byte_burst` | 524288 | Per-endpoint initial and maximum byte burst |
+| `relay.sessions` | 1024 | Global concurrent relay allocation limit |
 | `peerchat_handshake_seconds` | 15 | Absolute deadline for PeerChat registration |
 | `server_browser_idle_seconds` | 30 | Header and frame completion deadline |
 | `rate_limit_entry_seconds` | 120 | Idle lifetime for UDP source accounting |
@@ -93,11 +100,11 @@ cd server
 python -m unittest
 ```
 
-The suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, and deterministic APK patching.
+The suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, hard TTL, byte and packet limits, global relay capacity, and deterministic APK patching.
 
 ## Online play
 
-LAN support remains the compatibility baseline. The guarded direct-connect service is deployed on a public IPv4 VPS with server-observed endpoint publication, bounded protocol and state resources, admission controls, connection deadlines, structured NatNeg diagnostics, four-protocol health checks, systemd supervision, and firewall guidance. A Wi-Fi/cellular trial completed matchmaking but exposed a one-way peer UDP path, so direct play remains network-dependent and the next milestone is bounded relay fallback. Evidence and failure classification are in [DEPLOYMENT.md](DEPLOYMENT.md); implementation work remains tracked in [ROADMAP.md](ROADMAP.md).
+LAN support remains the compatibility baseline. The guarded direct-first service is deployed on a public IPv4 VPS with automatic relay fallback after three seconds. A controlled Wi-Fi/cellular pair that previously had a one-way direct path completed two consecutive relayed games and a reverse-host game. A LAN game under the same `auto` policy remained direct and allocated no relay. Evidence, configuration, and failure classification are in [DEPLOYMENT.md](DEPLOYMENT.md); further hardening remains tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Release status
 

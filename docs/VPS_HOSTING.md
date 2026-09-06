@@ -114,11 +114,11 @@ In the VPS provider's firewall or security-group control panel, allow:
 | UDP | 27900 | Availability and QR2 registration |
 | TCP | 6667 | PeerChat staging rooms |
 | TCP | 28910 | Server Browser discovery |
-| UDP | 27901 | NatNeg endpoint exchange |
+| UDP | 27901 | NatNeg endpoint exchange and fallback gameplay relay |
 
 Keep SSH restricted to your administrative source address when possible. During a controlled alpha, restrict FruitSpy to the known tester networks when their addresses are stable. Mobile carrier addresses can change and might require a temporary wider rule.
 
-Do not open gameplay port 6500 on the VPS. Gameplay remains peer-to-peer; the current server does not relay it.
+Do not open gameplay port 6500 on the VPS. Direct-capable clients send gameplay peer-to-peer. Automatic fallback reuses the existing UDP 27901 listener, so its packet-size, byte-rate, TTL, and session-cap limits apply to relayed gameplay.
 
 ## 6. Configure the Linux firewall
 
@@ -279,11 +279,12 @@ Use two clients on independent networks, such as two separate residential connec
 3. Have device A host a match.
 4. Have device B discover and join it.
 5. Confirm the logs contain QR2 registration, Server Browser discovery, both PeerChat clients, and `service=natneg event=peers_paired` with one session identifier.
-6. Complete three consecutive games and a rematch.
-7. Repeat with device B hosting.
-8. Run the health checks again.
+6. Confirm either `direct_established` or the complete `relay_activated`, two-peer `relay_ready`, and `relay_established` sequence.
+7. Complete three consecutive games and a rematch.
+8. Repeat with device B hosting.
+9. Run the health checks again.
 
-Success in the staging room alone is not a direct gameplay pass. The direct-connect alpha passes only when discovery, staging, NatNeg pairing, gameplay, rematch, and both hosting directions succeed.
+Success in the staging room alone is not a gameplay pass. Internet validation requires discovery, staging, NatNeg pairing, completed direct or relayed gameplay, a rematch, and both hosting directions.
 
 ## Troubleshooting
 
@@ -296,11 +297,11 @@ Success in the staging room alone is not a direct gameplay pass. The direct-conn
 | PeerChat fails | TCP 6667 and admission events |
 | No game appears | QR2 registration, reported-server expiry, and TCP 28910 |
 | NatNeg never pairs | UDP 27901, timestamps, and matching NatNeg session identifiers |
-| NatNeg pairs but gameplay times out | Capture the client game socket; repeated outbound NatNeg `CONNECT` packets with no inbound peer packet identify a one-way direct path caused by NAT or carrier filtering |
+| NatNeg pairs but gameplay times out | Check for `direct_established`; otherwise require `relay_activated`, both `relay_peer_ready` events, and `relay_established`, then inspect relay drop metrics |
 
 Do not solve a failed check by disabling the entire firewall or removing admission limits. Identify whether the failure is local process readiness, public reachability, matchmaking, NatNeg, or direct gameplay.
 
-Do not use `client_report result=success` alone as a gameplay pass. Fruit Ninja's report values proved inconsistent with observed packet flow; completed gameplay or a bidirectional trace through the `hbgs` transition is authoritative. See the [captured traversal boundary](../DEPLOYMENT.md#captured-traversal-boundary).
+`client_report result_code` is the GameSpy boolean: `1` is success and `0` is failure. A success means the client accepted either its direct peer or FruitSpy's fallback ping; completed gameplay remains the end-to-end signal. See the [captured traversal boundary](../DEPLOYMENT.md#captured-traversal-boundary).
 
 ## Update FruitSpy
 

@@ -70,6 +70,7 @@ class _RelaySession:
     started_at: float
     last_seen: float
     reports: set[int] = field(default_factory=set)
+    last_metrics_at: float = 0.0
     ready: set[int] = field(default_factory=set)
     packets: int = 0
     bytes: int = 0
@@ -463,6 +464,23 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         self.transport.sendto(data, destination)
         relay.packets += 1
         relay.bytes += len(data)
+        if relay.packets == 1:
+            relay.last_metrics_at = now
+            LOG.info(
+                "service=natneg event=relay_forwarding session=%s",
+                cookie.hex(),
+            )
+        elif now - relay.last_metrics_at >= 30:
+            relay.last_metrics_at = now
+            LOG.info(
+                "service=natneg event=relay_metrics session=%s "
+                "duration_ms=%d packets=%d bytes=%d drops=%d",
+                cookie.hex(),
+                round((now - relay.started_at) * 1000),
+                relay.packets,
+                relay.bytes,
+                relay.drops,
+            )
         return True
 
     def _expire_relays(self, now: float, *, force: bool = False) -> None:

@@ -7,7 +7,7 @@ End-user walkthroughs:
 
 ## Scope
 
-This runbook deploys the single-node, direct-connect Internet alpha. It does not provide a gameplay relay, accounts, transport encryption, or protection equivalent to a modern public game service. Keep access limited to known testers until the two-network validation matrix passes.
+This runbook deploys the single-node, direct-first Internet service with bounded UDP relay fallback. It does not provide accounts, transport encryption, or protection equivalent to a modern public game service. Keep access limited to known testers until the validation matrix passes.
 
 FruitSpy currently requires public IPv4 reachability. The APK patch target may be an IPv4 address or a DNS name shorter than 20 ASCII bytes because the native-library rewrite is size-preserving.
 
@@ -20,7 +20,7 @@ The same host must receive all four GameSpy services:
 | UDP | 27900 | Availability and QR2 host registration |
 | TCP | 6667 | PeerChat staging rooms |
 | TCP | 28910 | Server Browser discovery and negotiation messages |
-| UDP | 27901 | NatNeg endpoint exchange |
+| UDP | 27901 | NatNeg endpoint exchange and fallback gameplay relay |
 
 Publish one stable DNS A record for the host. If the host is behind a router, forward each TCP or UDP port with the protocol shown above. Do not place a generic HTTP reverse proxy in front of these binary protocols.
 
@@ -51,6 +51,23 @@ Use the checked-in configuration as the starting point:
 - Patch clients with the short DNS name or public IPv4 address that reaches this host. The server configuration does not declare or advertise that client patch target.
 
 The GameSpy secret in this compatibility configuration is embedded in the original client and is not an authentication credential.
+
+### Relay policy
+
+The checked-in configuration uses `relay.policy=auto`. FruitSpy first gives each peer the server-observed address of the other peer. If no authenticated client success report arrives within `relay.fallback_seconds`, the server sends each still-negotiating client a NatNeg `CONNECT_PING` from UDP 27901. The stock GameSpy state machine then treats that source as its peer, and FruitSpy forwards subsequent datagrams between only the two endpoints that complete the expected NatNeg exchange.
+
+Set `relay.policy` to `direct` to prohibit relay allocations. Automatic fallback uses the same UDP 27901 listener and requires no additional firewall rule. Its safety boundaries are:
+
+| Setting | Checked-in value | Boundary |
+| --- | ---: | --- |
+| `fallback_seconds` | 3 | Direct-attempt window before fallback |
+| `session_seconds` | 900 | Hard allocation TTL; activity does not extend it |
+| `packet_bytes` | 4096 | Maximum relayed UDP payload |
+| `bytes_per_second` | 262144 | Per-endpoint byte-token refill rate |
+| `byte_burst` | 524288 | Per-endpoint burst ceiling |
+| `sessions` | 1024 | Global active relay cap |
+
+Relay payloads are opaque. FruitSpy does not inspect or modify `hbgs` or gameplay messages.
 
 ## Firewall
 
@@ -135,10 +152,12 @@ A direct-connect pass requires discovery, room exchange, NatNeg pairing, gamepla
 - No PeerChat connection: TCP 6667 or admission limit.
 - Empty discovery: QR2 challenge/registration, reported-server expiry, or TCP 28910.
 - NatNeg never pairs: UDP 27901, mismatched session cookie, or one peer did not reach the service.
-- NatNeg pairs but gameplay times out: direct traversal failed after endpoint exchange; likely symmetric NAT, CGNAT, or a restrictive mobile network.
+- NatNeg pairs but neither `direct_established` nor `relay_activated` appears: relay policy, fallback scheduling, or premature service restart.
+- `relay_activated` appears without two `relay_peer_ready` events: one client did not accept or return the server's fallback ping on UDP 27901.
+- `relay_established` appears but gameplay stalls: inspect `relay_metrics` drops, packet-size and byte-rate limits, then the client gameplay state.
 - Local health passes but both remote clients fail: upstream firewall, security group, port forwarding, or DNS.
 
-Each `service=natneg event=client_report` record includes the client index, negotiation result, NAT type, and mapping scheme without retaining the game name or packet payload. Treat these client-reported values as advisory rather than proof of a bidirectional path. A successful gameplay trace produced `result=deadbeat_partner`, while a failed Wi-Fi/cellular trace produced `result=success` from both clients. Packet capture or completed gameplay is the acceptance signal; unknown numeric values remain visible through the corresponding `_code` fields.
+Each `service=natneg event=client_report` record includes the client index, the GameSpy `negResult` boolean, NAT type, and mapping scheme without retaining the game name or packet payload. `result=success result_code=1` means the client accepted a direct or relay `CONNECT_PING`; `result=failure result_code=0` means negotiation failed. NAT type and mapping values remain client-reported diagnostics. Completed gameplay is still the end-to-end acceptance signal.
 
 Do not weaken admission limits or disable the firewall to hide a classified failure. Capture the exact failed stage and change only the responsible boundary.
 
@@ -152,14 +171,20 @@ A controlled comparison isolated the Internet failure after successful discovery
 
 The endpoint exchange is correct, but the direct UDP path is not bidirectional. This rules out FruitSpy listener health and GT2 initialization as the immediate boundary. The trace cannot distinguish endpoint-dependent carrier NAT from carrier filtering, but either condition requires a relay or a mutually reachable overlay network; changing the four GameSpy service ports will not fix it.
 
+### Relay validation outcome
+
+With `relay.policy=auto` and a three-second deadline, the same Wi-Fi/cellular pair moved to relay after the direct path remained unconfirmed. Both endpoints returned the fallback ping, reported `result_code=1`, and established the relay within 301 ms of activation. The pair completed two consecutive games and another game with hosting reversed.
+
+The same build and policy were then exercised on the LAN. Direct success reports arrived 16 ms and 27 ms after pairing, canceled the scheduled fallback, and gameplay completed without a relay allocation.
+
 ## Rollback
 
 ```text
 sudo systemctl disable --now fruitspy.service
 ```
 
-Remove the four FruitSpy firewall rules and DNS record after the test window. Direct peer sessions are ephemeral; FruitSpy has no durable matchmaking database to migrate or recover.
+Remove the four FruitSpy firewall rules and DNS record after the test window. Direct and relay sessions are ephemeral; FruitSpy has no durable matchmaking database to migrate or recover.
 
-## Relay gate
+## Relay implementation result
 
-The Wi-Fi/cellular comparison satisfies the relay evidence gate: discovery, PeerChat, host publication, and NatNeg pairing completed, but the negotiated peer path remained one-way and never reached `hbgs`. Implement relay fallback only after a bounded direct attempt, keep direct UDP as the default, and leave the proven LAN path unchanged.
+The evidence gate is closed. FruitSpy now attempts direct traversal first, switches only unconfirmed sessions to the UDP 27901 relay after a bounded timeout, and leaves the proven LAN path direct. The relay accepts opaque traffic only after both server-observed endpoints return the expected cookie-bearing NatNeg ping.
