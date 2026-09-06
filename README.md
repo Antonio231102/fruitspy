@@ -184,6 +184,14 @@ python -m unittest tests.test_load
 
 It covers 256 PeerChat and 128 Server Browser connections with the 16-per-source cap; 1,024 rooms, 16 memberships per client, and 64 entries in every key collection; command and state-creation bursts; the 240-packet source burst, 8,192-packet global burst, 4,096-source table, and 30-violation ban threshold; 2,048 reported servers and 4,096 NatNeg sessions; and 1,024 relays with the 524,288-byte per-endpoint burst. These tests use isolated loopback listeners and in-process datagram transports; do not direct synthetic load at the public service.
 
+The deterministic failure-mode suite injects datagram loss, reordering, duplication, and delay; aborts live PeerChat and Server Browser clients; removes one relay while another is forwarding; and kills and restarts a temporary FruitSpy process:
+
+```text
+python -m unittest tests.test_failure_modes
+```
+
+It verifies retransmission recovery, state cleanup, nickname reuse, listener reconnection, relay isolation, process-local state reset, and four-protocol health after restart. The process test binds temporary loopback ports and does not restart or send fault traffic to the public service.
+
 ## Online play
 
 LAN support remains the compatibility baseline. The guarded direct-first service is deployed on a public IPv4 VPS with automatic relay fallback after three seconds. A controlled Wi-Fi/cellular pair that previously had a one-way direct path completed two consecutive relayed games and a reverse-host game. A LAN game under the same `auto` policy remained direct and allocated no relay. Evidence, configuration, and failure classification are in [DEPLOYMENT.md](DEPLOYMENT.md); further hardening remains tracked in [ROADMAP.md](ROADMAP.md).
