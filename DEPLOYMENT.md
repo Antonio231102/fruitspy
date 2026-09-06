@@ -174,6 +174,7 @@ The endpoint exchange is correct, but the direct UDP path is not bidirectional. 
 ### Relay validation outcome
 
 With `relay.policy=auto` and a three-second deadline, the same Wi-Fi/cellular pair moved to relay after the direct path remained unconfirmed. Both endpoints returned the fallback ping, reported `result_code=1`, and established the relay within 301 ms of activation. The pair completed two consecutive games and another game with hosting reversed.
+Relay lifecycle totals were 312 packets / 14,488 bytes, 297 packets / 13,400 bytes, and 554 packets / 25,396 bytes for the reverse-host game, with zero drops in all three sessions.
 
 The same build and policy were then exercised on the LAN. Direct success reports arrived 16 ms and 27 ms after pairing, canceled the scheduled fallback, and gameplay completed without a relay allocation.
 
