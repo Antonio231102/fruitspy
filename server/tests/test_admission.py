@@ -1,7 +1,12 @@
 import unittest
 import asyncio
 
-from fruitspy.admission import ConnectionAdmission, SourceRateLimiter, TokenBucket
+from fruitspy.admission import (
+    ConnectionAdmission,
+    TokenBucket,
+    UdpAdmission,
+    UdpAdmissionDecision,
+)
 from fruitspy.state import ServerState
 
 
@@ -13,28 +18,73 @@ class FakeClock:
         return self.now
 
 
-class SourceRateLimiterTests(unittest.TestCase):
-    def test_burst_is_bounded_and_refills(self) -> None:
+class UdpAdmissionTests(unittest.TestCase):
+    def test_global_budget_is_shared_across_sources(self) -> None:
         clock = FakeClock()
-        limiter = SourceRateLimiter(2, 2, 8, 60, clock=clock)
+        admission = UdpAdmission(10, 10, 2, 2, 8, 60, 3, 10, clock=clock)
 
-        self.assertTrue(limiter.allow("192.0.2.1"))
-        self.assertTrue(limiter.allow("192.0.2.1"))
-        self.assertFalse(limiter.allow("192.0.2.1"))
+        self.assertIs(
+            admission.allow("192.0.2.1"),
+            UdpAdmissionDecision.ALLOWED,
+        )
+        self.assertIs(
+            admission.allow("192.0.2.2"),
+            UdpAdmissionDecision.ALLOWED,
+        )
+        self.assertIs(
+            admission.allow("192.0.2.3"),
+            UdpAdmissionDecision.GLOBAL_RATE_LIMIT,
+        )
 
         clock.now = 0.5
-        self.assertTrue(limiter.allow("192.0.2.1"))
-        self.assertFalse(limiter.allow("192.0.2.1"))
+        self.assertIs(
+            admission.allow("192.0.2.3"),
+            UdpAdmissionDecision.ALLOWED,
+        )
+
+    def test_repeated_source_overage_starts_and_enforces_temporary_ban(
+        self,
+    ) -> None:
+        clock = FakeClock()
+        admission = UdpAdmission(1, 1, 100, 100, 8, 60, 2, 10, clock=clock)
+        source = "192.0.2.1"
+
+        self.assertIs(admission.allow(source), UdpAdmissionDecision.ALLOWED)
+        self.assertIs(
+            admission.allow(source),
+            UdpAdmissionDecision.SOURCE_RATE_LIMIT,
+        )
+        self.assertIs(
+            admission.allow(source),
+            UdpAdmissionDecision.SOURCE_BAN_STARTED,
+        )
+
+        clock.now = 5
+        self.assertIs(
+            admission.allow(source),
+            UdpAdmissionDecision.SOURCE_BANNED,
+        )
+        clock.now = 10
+        self.assertIs(admission.allow(source), UdpAdmissionDecision.ALLOWED)
 
     def test_source_table_stays_bounded_and_expires_idle_entries(self) -> None:
         clock = FakeClock()
-        limiter = SourceRateLimiter(1, 1, 1, 10, clock=clock)
+        admission = UdpAdmission(1, 1, 100, 100, 1, 10, 2, 10, clock=clock)
 
-        self.assertTrue(limiter.allow("192.0.2.1"))
-        self.assertFalse(limiter.allow("192.0.2.2"))
+        self.assertIs(
+            admission.allow("192.0.2.1"),
+            UdpAdmissionDecision.ALLOWED,
+        )
+        self.assertIs(
+            admission.allow("192.0.2.2"),
+            UdpAdmissionDecision.SOURCE_TABLE_FULL,
+        )
 
         clock.now = 11
-        self.assertTrue(limiter.allow("192.0.2.2"))
+        self.assertIs(
+            admission.allow("192.0.2.2"),
+            UdpAdmissionDecision.ALLOWED,
+        )
 
 
 class TokenBucketTests(unittest.TestCase):

@@ -4,6 +4,7 @@ import struct
 import unittest
 from dataclasses import replace
 
+from fruitspy.admission import UdpAdmission, create_udp_admission
 from fruitspy.availability_qr import AvailabilityQRProtocol
 from fruitspy.crypto import EnctypeX, gsseckey
 from fruitspy.natneg import (
@@ -38,14 +39,23 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self) -> None:
         self.config = test_config()
         self.state = ServerState(120, 60)
+        self.udp_admission = create_udp_admission(self.config)
         loop = asyncio.get_running_loop()
-        self.qr_transport, _ = await loop.create_datagram_endpoint(
-            lambda: AvailabilityQRProtocol(self.config, self.state),
+        self.qr_transport, self.qr_protocol = await loop.create_datagram_endpoint(
+            lambda: AvailabilityQRProtocol(
+                self.config,
+                self.state,
+                self.udp_admission,
+            ),
             local_addr=("127.0.0.1", 0),
         )
         self.qr_port = self.qr_transport.get_extra_info("sockname")[1]
         self.nat_transport, self.nat_protocol = await loop.create_datagram_endpoint(
-            lambda: NatNegProtocol(self.config, self.state),
+            lambda: NatNegProtocol(
+                self.config,
+                self.state,
+                self.udp_admission,
+            ),
             local_addr=("127.0.0.1", 0),
         )
         self.nat_port = self.nat_transport.get_extra_info("sockname")[1]
@@ -762,6 +772,55 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(recovered, b"\xfe\xfd\x09" + b"\x00" * 8)
         finally:
             transport.close()
+
+
+    async def test_global_udp_budget_is_shared_by_qr_and_natneg(self) -> None:
+        admission = UdpAdmission(100, 100, 1, 1, 8, 60, 3, 10)
+        self.qr_protocol.udp_admission = admission
+        self.nat_protocol.udp_admission = admission
+        loop = asyncio.get_running_loop()
+        qr_client = self.udp_socket()
+        nat_client = self.udp_socket()
+        availability = b"\x09\x00\x00\x00\x00FruitNinjaand\x00"
+        natify = MAGIC + bytes((3, NN_NATIFY_REQUEST)) + b"GLOB"
+
+        response = await self.exchange_udp(qr_client, availability, self.qr_port)
+        self.assertEqual(response, b"\xfe\xfd\x09" + b"\x00" * 8)
+        await loop.sock_sendto(nat_client, natify, ("127.0.0.1", self.nat_port))
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(loop.sock_recvfrom(nat_client, 2048), 0.1)
+
+        await asyncio.sleep(1.05)
+        response = await self.exchange_udp(nat_client, natify, self.nat_port)
+        self.assertEqual(response[7], NN_ERT_TEST)
+
+    async def test_source_ban_applies_across_udp_listeners(self) -> None:
+        admission = UdpAdmission(10, 1, 100, 100, 8, 60, 2, 0.2)
+        self.qr_protocol.udp_admission = admission
+        self.nat_protocol.udp_admission = admission
+        loop = asyncio.get_running_loop()
+        qr_client = self.udp_socket()
+        nat_client = self.udp_socket()
+        availability = b"\x09\x00\x00\x00\x00FruitNinjaand\x00"
+        natify = MAGIC + bytes((3, NN_NATIFY_REQUEST)) + b"BANN"
+
+        await self.exchange_udp(qr_client, availability, self.qr_port)
+        await loop.sock_sendto(qr_client, availability, ("127.0.0.1", self.qr_port))
+        with self.assertRaises(TimeoutError):
+            await asyncio.wait_for(loop.sock_recvfrom(qr_client, 2048), 0.05)
+        with self.assertLogs("fruitspy.natneg", level="WARNING") as captured:
+            await loop.sock_sendto(
+                nat_client,
+                natify,
+                ("127.0.0.1", self.nat_port),
+            )
+            with self.assertRaises(TimeoutError):
+                await asyncio.wait_for(loop.sock_recvfrom(nat_client, 2048), 0.05)
+        self.assertIn("reason=source_ban_started", "\n".join(captured.output))
+
+        await asyncio.sleep(0.21)
+        response = await self.exchange_udp(qr_client, availability, self.qr_port)
+        self.assertEqual(response, b"\xfe\xfd\x09" + b"\x00" * 8)
 
 
     async def test_udp_listeners_recover_after_malformed_packets(self) -> None:

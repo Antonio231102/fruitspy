@@ -5,6 +5,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from .admission import create_udp_admission
 from .availability_qr import AvailabilityQRProtocol
 from .config import ServerConfig, load_config
 from .natneg import NatNegProtocol
@@ -23,12 +24,13 @@ async def run_server(config: ServerConfig) -> None:
         max_reported_servers=config.limits.reported_servers,
         max_nat_sessions=config.limits.nat_sessions,
     )
+    udp_admission = create_udp_admission(config)
     qr_transport, _ = await loop.create_datagram_endpoint(
-        lambda: AvailabilityQRProtocol(config, state),
+        lambda: AvailabilityQRProtocol(config, state, udp_admission),
         local_addr=(config.bind_host, config.ports.availability_qr_udp),
     )
     nat_transport, _ = await loop.create_datagram_endpoint(
-        lambda: NatNegProtocol(config, state),
+        lambda: NatNegProtocol(config, state, udp_admission),
         local_addr=(config.bind_host, config.ports.natneg_udp),
     )
     peerchat = PeerChatServer(config)

@@ -2,6 +2,10 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
+from enum import Enum
+
+from .config import ServerConfig
 
 
 class TokenBucket:
@@ -34,51 +38,112 @@ class TokenBucket:
         return True
 
 
-class SourceRateLimiter:
+class UdpAdmissionDecision(Enum):
+    ALLOWED = "allowed"
+    GLOBAL_RATE_LIMIT = "global_rate_limit"
+    SOURCE_RATE_LIMIT = "source_rate_limit"
+    SOURCE_BAN_STARTED = "source_ban_started"
+    SOURCE_BANNED = "source_banned"
+    SOURCE_TABLE_FULL = "source_table_full"
+
+
+@dataclass(slots=True)
+class _UdpSource:
+    bucket: TokenBucket
+    last_seen: float
+    violations: int = 0
+    banned_until: float = 0.0
+
+
+class UdpAdmission:
     def __init__(
         self,
-        rate_per_second: int,
-        burst: int,
+        source_rate_per_second: int,
+        source_burst: int,
+        global_rate_per_second: int,
+        global_burst: int,
         max_sources: int,
         entry_ttl_seconds: int,
+        source_violation_burst: int,
+        source_ban_seconds: int,
         *,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
-        self.rate_per_second = rate_per_second
-        self.burst = burst
+        self.source_rate_per_second = source_rate_per_second
+        self.source_burst = source_burst
         self.max_sources = max_sources
         self.entry_ttl_seconds = entry_ttl_seconds
+        self.source_violation_burst = source_violation_burst
+        self.source_ban_seconds = source_ban_seconds
         self.clock = clock
-        self._buckets: dict[str, TokenBucket] = {}
+        self._global_bucket = TokenBucket(
+            global_rate_per_second,
+            global_burst,
+            clock=clock,
+        )
+        self._sources: dict[str, _UdpSource] = {}
         self._next_expiry_at = self.clock() + entry_ttl_seconds
 
-    def allow(self, source: str) -> bool:
+    def allow(self, source: str) -> UdpAdmissionDecision:
         now = self.clock()
         if now >= self._next_expiry_at:
             self._expire(now)
             self._next_expiry_at = now + self.entry_ttl_seconds
 
-        bucket = self._buckets.get(source)
-        if bucket is None:
-            if len(self._buckets) >= self.max_sources:
-                self._expire(now)
-            if len(self._buckets) >= self.max_sources:
-                return False
-            bucket = TokenBucket(
-                self.rate_per_second,
-                self.burst,
-                clock=self.clock,
-            )
-            self._buckets[source] = bucket
+        source_state = self._sources.get(source)
+        if source_state is not None and source_state.banned_until > now:
+            return UdpAdmissionDecision.SOURCE_BANNED
+        if not self._global_bucket.allow():
+            return UdpAdmissionDecision.GLOBAL_RATE_LIMIT
 
-        return bucket.allow()
+        if source_state is None:
+            if len(self._sources) >= self.max_sources:
+                self._expire(now)
+            if len(self._sources) >= self.max_sources:
+                return UdpAdmissionDecision.SOURCE_TABLE_FULL
+            source_state = _UdpSource(
+                bucket=TokenBucket(
+                    self.source_rate_per_second,
+                    self.source_burst,
+                    clock=self.clock,
+                ),
+                last_seen=now,
+            )
+            self._sources[source] = source_state
+        else:
+            source_state.last_seen = now
+
+        if source_state.bucket.allow():
+            source_state.violations = 0
+            return UdpAdmissionDecision.ALLOWED
+
+        source_state.violations += 1
+        if source_state.violations >= self.source_violation_burst:
+            source_state.violations = 0
+            source_state.banned_until = now + self.source_ban_seconds
+            return UdpAdmissionDecision.SOURCE_BAN_STARTED
+        return UdpAdmissionDecision.SOURCE_RATE_LIMIT
 
     def _expire(self, now: float) -> None:
-        self._buckets = {
-            source: bucket
-            for source, bucket in self._buckets.items()
-            if now - bucket.updated_at <= self.entry_ttl_seconds
+        self._sources = {
+            source: state
+            for source, state in self._sources.items()
+            if state.banned_until > now
+            or now - state.last_seen <= self.entry_ttl_seconds
         }
+
+
+def create_udp_admission(config: ServerConfig) -> UdpAdmission:
+    return UdpAdmission(
+        source_rate_per_second=config.limits.udp_packets_per_second,
+        source_burst=config.limits.udp_burst,
+        global_rate_per_second=config.limits.udp_global_packets_per_second,
+        global_burst=config.limits.udp_global_burst,
+        max_sources=config.limits.udp_tracked_sources,
+        entry_ttl_seconds=config.timeouts.rate_limit_entry_seconds,
+        source_violation_burst=config.limits.udp_source_violation_burst,
+        source_ban_seconds=config.timeouts.udp_source_ban_seconds,
+    )
 
 
 class ConnectionAdmission:

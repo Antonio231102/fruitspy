@@ -2,6 +2,7 @@ import asyncio
 import unittest
 from dataclasses import replace
 
+from fruitspy.admission import create_udp_admission
 from fruitspy.availability_qr import AvailabilityQRProtocol
 from fruitspy.healthcheck import check_server
 from fruitspy.natneg import NatNegProtocol
@@ -15,13 +16,14 @@ class HealthCheckTests(unittest.IsolatedAsyncioTestCase):
     async def test_all_protocol_listeners_report_healthy(self) -> None:
         config = test_config()
         state = ServerState(120, 60)
+        udp_admission = create_udp_admission(config)
         loop = asyncio.get_running_loop()
         qr_transport, _ = await loop.create_datagram_endpoint(
-            lambda: AvailabilityQRProtocol(config, state),
+            lambda: AvailabilityQRProtocol(config, state, udp_admission),
             local_addr=("127.0.0.1", 0),
         )
         nat_transport, _ = await loop.create_datagram_endpoint(
-            lambda: NatNegProtocol(config, state),
+            lambda: NatNegProtocol(config, state, udp_admission),
             local_addr=("127.0.0.1", 0),
         )
         chat_service = PeerChatServer(config)

@@ -6,8 +6,12 @@ import secrets
 import string
 import struct
 
+from .admission import (
+    UdpAdmission,
+    UdpAdmissionDecision,
+    create_udp_admission,
+)
 from .config import ServerConfig
-from .admission import SourceRateLimiter
 from .crypto import gsseckey
 from .state import Address, ServerState
 
@@ -43,23 +47,34 @@ def parse_qr_server_keys(data: bytes, offset: int = 5) -> dict[str, str]:
 
 
 class AvailabilityQRProtocol(asyncio.DatagramProtocol):
-    def __init__(self, config: ServerConfig, state: ServerState) -> None:
+    def __init__(
+        self,
+        config: ServerConfig,
+        state: ServerState,
+        udp_admission: UdpAdmission | None = None,
+    ) -> None:
         self.config = config
         self.state = state
         self.transport: asyncio.DatagramTransport | None = None
-        self.rate_limiter = SourceRateLimiter(
-            config.limits.udp_packets_per_second,
-            config.limits.udp_burst,
-            config.limits.udp_tracked_sources,
-            config.timeouts.rate_limit_entry_seconds,
-        )
+        self.udp_admission = udp_admission or create_udp_admission(config)
 
     def connection_made(self, transport: asyncio.BaseTransport) -> None:
         self.transport = transport  # type: ignore[assignment]
 
     def datagram_received(self, data: bytes, addr: Address) -> None:
-        if not self.rate_limiter.allow(addr[0]):
-            LOG.debug("QR rate limit source=%s", addr[0])
+        decision = self.udp_admission.allow(addr[0])
+        if decision is not UdpAdmissionDecision.ALLOWED:
+            log_level = (
+                logging.WARNING
+                if decision is UdpAdmissionDecision.SOURCE_BAN_STARTED
+                else logging.DEBUG
+            )
+            LOG.log(
+                log_level,
+                "service=qr event=udp_admission_rejected source=%s reason=%s",
+                addr[0],
+                decision.value,
+            )
             return
         try:
             response = self.handle_datagram(data, addr)

@@ -7,7 +7,11 @@ import struct
 import time
 from dataclasses import dataclass, field
 
-from .admission import SourceRateLimiter
+from .admission import (
+    UdpAdmission,
+    UdpAdmissionDecision,
+    create_udp_admission,
+)
 from .config import ServerConfig
 from .state import Address, NatPeerClaimRejected, ServerState
 
@@ -83,16 +87,16 @@ def _enum_name(names: tuple[str, ...], value: int) -> str:
 
 
 class NatNegProtocol(asyncio.DatagramProtocol):
-    def __init__(self, config: ServerConfig, state: ServerState) -> None:
+    def __init__(
+        self,
+        config: ServerConfig,
+        state: ServerState,
+        udp_admission: UdpAdmission | None = None,
+    ) -> None:
         self.config = config
         self.state = state
         self.transport: asyncio.DatagramTransport | None = None
-        self.rate_limiter = SourceRateLimiter(
-            config.limits.udp_packets_per_second,
-            config.limits.udp_burst,
-            config.limits.udp_tracked_sources,
-            config.timeouts.rate_limit_entry_seconds,
-        )
+        self.udp_admission = udp_admission or create_udp_admission(config)
         self._relay_expirations: dict[bytes, asyncio.TimerHandle] = {}
         self._fallbacks: dict[bytes, asyncio.TimerHandle] = {}
         self._relays: dict[bytes, _RelaySession] = {}
@@ -114,8 +118,19 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         self.transport = None
 
     def datagram_received(self, data: bytes, addr: Address) -> None:
-        if not self.rate_limiter.allow(addr[0]):
-            LOG.debug("NatNeg rate limit source=%s", addr[0])
+        decision = self.udp_admission.allow(addr[0])
+        if decision is not UdpAdmissionDecision.ALLOWED:
+            log_level = (
+                logging.WARNING
+                if decision is UdpAdmissionDecision.SOURCE_BAN_STARTED
+                else logging.DEBUG
+            )
+            LOG.log(
+                log_level,
+                "service=natneg event=udp_admission_rejected source=%s reason=%s",
+                addr[0],
+                decision.value,
+            )
             return
         now = time.monotonic()
         self._expire_relays(now)

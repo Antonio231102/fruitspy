@@ -31,6 +31,7 @@ def test_config() -> ServerConfig:
             state_expiry_interval_seconds=5,
             server_browser_idle_seconds=30,
             rate_limit_entry_seconds=120,
+            udp_source_ban_seconds=60,
         ),
         limits=LimitConfig(
             peerchat_line_bytes=4096,
@@ -49,6 +50,9 @@ def test_config() -> ServerConfig:
             connections_per_source=16,
             udp_packets_per_second=120,
             udp_burst=240,
+            udp_global_packets_per_second=4096,
+            udp_global_burst=8192,
+            udp_source_violation_burst=30,
             udp_tracked_sources=4096,
             reported_servers=2048,
             nat_sessions=4096,

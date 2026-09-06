@@ -70,9 +70,12 @@ The unified configuration includes the checked-in safety limits; operators shoul
 | `peerchat_state_creation_burst` | 32 | Maximum per-client burst of new persistent state |
 | `server_browser_connections` | 128 | Maximum concurrent Server Browser TCP connections |
 | `connections_per_source` | 16 | Per-source cap, enforced independently by each TCP service |
-| `udp_packets_per_second` | 120 | QR2 and NatNeg token refill rate per source IPv4 address |
-| `udp_burst` | 240 | Short UDP burst permitted by each service |
-| `udp_tracked_sources` | 4096 | Hard bound on each UDP rate-limit table |
+| `udp_packets_per_second` | 120 | Shared QR2/NatNeg token refill rate per source IPv4 address |
+| `udp_burst` | 240 | Maximum per-source UDP burst across both UDP listeners |
+| `udp_global_packets_per_second` | 4096 | Global QR2/NatNeg packet-token refill rate |
+| `udp_global_burst` | 8192 | Maximum aggregate UDP burst across both UDP listeners |
+| `udp_source_violation_burst` | 30 | Consecutive source-rate rejections before a temporary source ban |
+| `udp_tracked_sources` | 4096 | Hard bound on the shared UDP source-accounting table |
 | `reported_servers` | 2048 | Hard bound on QR2 server registrations |
 | `nat_sessions` | 4096 | Hard bound on concurrent NatNeg cookie sessions |
 | `relay.policy` | `auto` | Direct-first negotiation with bounded fallback; set `direct` to disable relay allocation |
@@ -86,6 +89,7 @@ The unified configuration includes the checked-in safety limits; operators shoul
 | `state_expiry_interval_seconds` | 5 | Background cadence for reported-server and NatNeg session expiry |
 | `server_browser_idle_seconds` | 30 | Header and frame completion deadline |
 | `rate_limit_entry_seconds` | 120 | Idle lifetime for UDP source accounting |
+| `udp_source_ban_seconds` | 60 | Temporary ban duration after repeated per-source rate violations |
 
 Rejected connections and protocol events use stable `service=... event=...` fields. Verbose logs omit PeerChat message bodies, nicknames, quit reasons, and raw Server Browser frames. Source addresses remain available for abuse diagnosis and should be retained only as long as operationally necessary.
 
@@ -94,6 +98,8 @@ Channel-limit rejections return IRC numeric `405`; key updates that would exceed
 Command-budget exhaustion returns numeric `263` and disconnects the offending PeerChat client before additional buffered commands can run. State-creation exhaustion returns `263` without disconnecting; the rejected command makes no partial change, while updates to existing state remain available.
 
 The state sweeper removes expired QR2 registrations and NatNeg setup sessions on the configured cadence even when no client request arrives. Expired registered hosts trigger normal Server Browser deletion updates. Authenticated relay traffic refreshes its NatNeg setup session when present, while the relay allocation retains its independent activity and hard-TTL lifecycle.
+
+QR2 and NatNeg share one global packet budget and one per-source table, so moving traffic between the two UDP ports cannot bypass admission. A source that continues transmitting after exhausting its burst is temporarily banned across both listeners after `udp_source_violation_burst` consecutive rejections. An accepted packet resets that violation run. Global exhaustion does not penalize individual sources. Structured `udp_admission_rejected` events identify global limits, source limits, newly started bans, active bans, and source-table capacity without parsing packet contents.
 
 ## Patch a locally owned APK
 

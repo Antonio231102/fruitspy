@@ -40,6 +40,9 @@ class LimitConfig:
     connections_per_source: int
     udp_packets_per_second: int
     udp_burst: int
+    udp_global_packets_per_second: int
+    udp_global_burst: int
+    udp_source_violation_burst: int
     udp_tracked_sources: int
     reported_servers: int
     nat_sessions: int
@@ -53,6 +56,7 @@ class TimeoutConfig:
     state_expiry_interval_seconds: int
     server_browser_idle_seconds: int
     rate_limit_entry_seconds: int
+    udp_source_ban_seconds: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +164,25 @@ def load_config(path: str | Path) -> ServerConfig:
         raise ValueError("udp_packets_per_second must be between 1 and 65535")
     if not limits.udp_packets_per_second <= limits.udp_burst <= 65535:
         raise ValueError("udp_burst must be at least udp_packets_per_second")
+    if not (
+        limits.udp_packets_per_second
+        <= limits.udp_global_packets_per_second
+        <= 1_000_000
+    ):
+        raise ValueError(
+            "udp_global_packets_per_second must be at least "
+            "udp_packets_per_second and at most 1000000"
+        )
+    if not (
+        max(limits.udp_burst, limits.udp_global_packets_per_second)
+        <= limits.udp_global_burst
+        <= 1_000_000
+    ):
+        raise ValueError(
+            "udp_global_burst must fit the configured source and global rates"
+        )
+    if not 1 <= limits.udp_source_violation_burst <= 65535:
+        raise ValueError("udp_source_violation_burst must be between 1 and 65535")
     if not 1 <= limits.udp_tracked_sources <= 1_000_000:
         raise ValueError("udp_tracked_sources must be between 1 and 1000000")
     if not 1 <= limits.reported_servers <= 1_000_000:
@@ -187,6 +210,7 @@ def load_config(path: str | Path) -> ServerConfig:
         ("state_expiry_interval_seconds", timeouts.state_expiry_interval_seconds),
         ("server_browser_idle_seconds", timeouts.server_browser_idle_seconds),
         ("rate_limit_entry_seconds", timeouts.rate_limit_entry_seconds),
+        ("udp_source_ban_seconds", timeouts.udp_source_ban_seconds),
     ):
         if not 1 <= value <= 86400:
             raise ValueError(f"{name} must be between 1 and 86400")
