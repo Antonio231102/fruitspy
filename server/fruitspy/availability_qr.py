@@ -14,6 +14,7 @@ from .admission import (
 )
 from .config import ServerConfig
 from .crypto import gsseckey
+from .metrics import MetricsRegistry
 from .log_fields import sanitize_log_field
 from .state import Address, ServerState
 
@@ -56,9 +57,11 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         config: ServerConfig,
         state: ServerState,
         udp_admission: UdpAdmission | None = None,
+        metrics: MetricsRegistry | None = None,
     ) -> None:
         self.config = config
         self.state = state
+        self.metrics = metrics or state.metrics
         self.transport: asyncio.DatagramTransport | None = None
         self.udp_admission = udp_admission or create_udp_admission(config)
 
@@ -79,6 +82,11 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
                 addr[0],
                 decision.value,
             )
+            self.metrics.increment(
+                "fruitspy_admission_rejections_total",
+                service="qr",
+                reason=decision.value,
+            )
             return
         try:
             response = self.handle_datagram(data, addr)
@@ -87,6 +95,11 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
                 "discarding malformed QR packet from %s: %s",
                 addr,
                 sanitize_log_field(error),
+            )
+            self.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="qr",
+                reason="malformed",
             )
             return
         if response is not None and self.transport is not None:
@@ -127,8 +140,8 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
             )
         return None
 
-    @staticmethod
     def _bounded_response(
+        self,
         request: bytes,
         response: bytes | None,
         addr: Address,
@@ -146,6 +159,11 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
             addr,
             len(request),
             len(response),
+        )
+        self.metrics.increment(
+            "fruitspy_protocol_rejections_total",
+            service="qr",
+            reason="amplification",
         )
         return None
 

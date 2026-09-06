@@ -12,6 +12,7 @@ from .admission import ConnectionAdmission
 from .config import ServerConfig
 from .crypto import EnctypeX
 from .log_fields import sanitize_log_field
+from .metrics import MetricsRegistry
 from .state import Address, ReportedServer, ServerState
 
 LOG = logging.getLogger(__name__)
@@ -69,9 +70,15 @@ class ServerListSubscription:
 
 
 class ServerBrowserServer:
-    def __init__(self, config: ServerConfig, state: ServerState) -> None:
+    def __init__(
+        self,
+        config: ServerConfig,
+        state: ServerState,
+        metrics: MetricsRegistry | None = None,
+    ) -> None:
         self.config = config
         self.state = state
+        self.metrics = metrics or state.metrics
         self.admission = ConnectionAdmission(
             config.limits.server_browser_connections,
             config.limits.connections_per_source,
@@ -90,12 +97,21 @@ class ServerBrowserServer:
                 "service=server_browser event=admission_rejected source=%s",
                 source,
             )
+            self.metrics.increment(
+                "fruitspy_admission_rejections_total",
+                service="server_browser",
+                reason="connection_limit",
+            )
             writer.close()
             try:
                 await asyncio.wait_for(writer.wait_closed(), 1)
             except (TimeoutError, ConnectionError):
                 writer.transport.abort()
             return
+        self.metrics.set_gauge(
+            "fruitspy_server_browser_connections",
+            self.admission.total,
+        )
         cipher: EnctypeX | None = None
         subscription: ServerListSubscription | None = None
         change_event = self.state.subscribe_server_changes()
@@ -203,6 +219,11 @@ class ServerBrowserServer:
                 source,
                 sanitize_log_field(error),
             )
+            self.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="server_browser",
+                reason="malformed",
+            )
         finally:
             self.state.unsubscribe_server_changes(change_event)
             push_task.cancel()
@@ -213,6 +234,10 @@ class ServerBrowserServer:
             except (TimeoutError, ConnectionError):
                 writer.transport.abort()
             self.admission.release(source)
+            self.metrics.set_gauge(
+                "fruitspy_server_browser_connections",
+                self.admission.total,
+            )
             LOG.info(
                 "service=server_browser event=disconnected connection=%s source=%s",
                 connection_id,
@@ -236,6 +261,10 @@ class ServerBrowserServer:
         offset += 2
         if list_version != 1 or encoding_version != 3:
             raise ValueError("unsupported Server Browser protocol version")
+        self.metrics.increment(
+            "fruitspy_discovery_requests_total",
+            kind="list",
+        )
         if offset + 4 > len(packet):
             raise ValueError("truncated Server Browser request")
         offset += 4  # game version
@@ -277,6 +306,10 @@ class ServerBrowserServer:
                         for server in servers
                     },
                 )
+        self.metrics.increment(
+            "fruitspy_discovery_results_total",
+            result="nonempty" if server_count else "empty",
+        )
         LOG.info(
             "Server Browser query source=%s fields=%d groups=%s push=%s servers=%d",
             source_ip,
@@ -291,6 +324,10 @@ class ServerBrowserServer:
     def _handle_info_request(self, packet: bytes, cipher: EnctypeX) -> bytes | None:
         if len(packet) != 9:
             raise ValueError("invalid Server Browser info request length")
+        self.metrics.increment(
+            "fruitspy_discovery_requests_total",
+            kind="info",
+        )
         host = socket.inet_ntoa(packet[3:7])
         port = struct.unpack_from(">H", packet, 7)[0]
         server = next(
@@ -320,6 +357,10 @@ class ServerBrowserServer:
     async def _handle_send_message_request(self, packet: bytes) -> None:
         if len(packet) <= 9:
             raise ValueError("invalid Server Browser send-message request length")
+        self.metrics.increment(
+            "fruitspy_discovery_requests_total",
+            kind="relay",
+        )
         host = socket.inet_ntoa(packet[3:7])
         port = struct.unpack_from(">H", packet, 7)[0]
         server = next(

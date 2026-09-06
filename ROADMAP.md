@@ -139,7 +139,7 @@ Purpose: close the known matchmaking and abuse-resistance gaps before inviting a
 
 ### Operations and failure testing
 
-- [ ] Add privacy-preserving metrics for active clients, rooms, discovery, NatNeg outcomes, relay outcomes, latency, errors, and admission rejection.
+- [x] Add privacy-preserving metrics for active clients, rooms, discovery, NatNeg outcomes, relay outcomes, latency, errors, and admission rejection. A dependency-free Prometheus text endpoint listens on configurable loopback only, with a distinct port and bounded HTTP input. The fixed schema permits only closed server-defined label values and excludes addresses, connection/session IDs, cookies, nicknames, room and host names, messages, and payloads. Process-local gauges, counters, and fixed-bucket setup histograms reset on restart; external retention remains an operator responsibility.
 - [ ] Add graceful drain behavior: stop new matchmaking while allowing existing direct games to continue and reporting relay shutdown explicitly.
 - [ ] Fuzz QR2, NatNeg, Server Browser, encrypted PeerChat, and filter inputs.
 - [ ] Run concurrent connection, room, packet, and relay load tests to the configured capacity limits.

@@ -394,6 +394,20 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         await loop.sock_sendto(first, b"b" * 800, ("127.0.0.1", self.nat_port))
         with self.assertRaises(TimeoutError):
             await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 0.05)
+        metrics = self.state.metrics.render().decode("utf-8")
+        self.assertIn("fruitspy_natneg_relays 1", metrics)
+        self.assertIn(
+            'fruitspy_relay_events_total{event="activated"} 1',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_relay_packets_total{result="forwarded"} 2',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_relay_packets_total{result="dropped"} 2',
+            metrics,
+        )
 
     async def test_active_relay_survives_nat_session_expiry(self) -> None:
         self.nat_protocol.config = replace(

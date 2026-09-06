@@ -28,6 +28,8 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(config.timeouts.udp_source_ban_seconds, 60)
         self.assertEqual(config.relay.policy, "auto")
         self.assertEqual(config.relay.fallback_seconds, 3)
+        self.assertEqual(config.metrics.bind_host, "127.0.0.1")
+        self.assertEqual(config.metrics.port, 9108)
 
     def test_removed_profile_fields_are_rejected(self) -> None:
         source = self.server_root / "config.json"
@@ -51,6 +53,26 @@ class ConfigTests(unittest.TestCase):
             invalid = Path(directory) / "invalid.json"
             invalid.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "natneg_packet_bytes"):
+                load_config(invalid)
+
+    def test_metrics_listener_is_loopback_only_and_uses_a_distinct_port(
+        self,
+    ) -> None:
+        source = self.server_root / "config.json"
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["metrics"]["bind_host"] = "0.0.0.0"
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "loopback"):
+                load_config(invalid)
+
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["metrics"]["port"] = payload["ports"]["peerchat_tcp"]
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "differ"):
                 load_config(invalid)
 
     def test_admission_limits_and_deadlines_are_validated(self) -> None:

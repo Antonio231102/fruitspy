@@ -113,6 +113,24 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_metrics_track_clients_and_rooms_without_names(self) -> None:
+        client = await self.connect_player("private-player")
+        try:
+            await client.send("JOIN #private-room")
+            await client.read_until("End of NAMES list")
+            metrics = self.service.metrics.render().decode("utf-8")
+            self.assertIn("fruitspy_peerchat_clients 1", metrics)
+            self.assertIn("fruitspy_peerchat_rooms 1", metrics)
+            self.assertNotIn("private-player", metrics)
+            self.assertNotIn("private-room", metrics)
+
+            await client.send("PART #private-room :Leaving")
+            await client.read_until("PART #private-room")
+            metrics = self.service.metrics.render().decode("utf-8")
+            self.assertIn("fruitspy_peerchat_rooms 0", metrics)
+        finally:
+            await client.close()
+
     async def test_welcomed_connection_remains_open_without_traffic(self) -> None:
         client = await EncryptedPeerClient.connect(self.port)
         try:

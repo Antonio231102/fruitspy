@@ -54,6 +54,18 @@ python -m fruitspy.healthcheck --config config.json
 
 The command validates Availability/QR2 and NatNeg responses, checks both TCP listeners, and exits nonzero if any service is unavailable.
 
+### Operational metrics
+
+FruitSpy exposes Prometheus text metrics on the separate administrative listener configured by `metrics.bind_host` and `metrics.port`. The checked-in endpoint is `http://127.0.0.1:9108/metrics`; configuration validation requires a loopback IP and rejects reuse of a public service port. Do not add port 9108 to the public firewall rules. Scrape locally or through an authenticated SSH tunnel:
+
+```text
+curl --fail http://127.0.0.1:9108/metrics
+```
+
+The schema is fixed and cardinality-bounded. It reports aggregate gauges for active clients, rooms, QR2 records, browser connections, NatNeg sessions, and relays; counters for discovery, negotiation, relay, errors, admission rejections, and amplification suppression; and fixed-bucket direct/relay setup latency histograms. Labels come only from closed server-defined sets. Metrics never contain source addresses, connection or session identifiers, cookies, nicknames, room names, hostnames, message bodies, or packet payloads.
+
+Metrics exist only in process memory and reset when FruitSpy restarts. FruitSpy does not persist or transmit them. An external scraper controls any retention and must apply its own access and deletion policy.
+
 ### Admission controls
 
 The unified configuration includes the checked-in safety limits; operators should tune them only from measured traffic:
@@ -90,6 +102,8 @@ The unified configuration includes the checked-in safety limits; operators shoul
 | `server_browser_idle_seconds` | 30 | Header and frame completion deadline |
 | `rate_limit_entry_seconds` | 120 | Idle lifetime for UDP source accounting |
 | `udp_source_ban_seconds` | 60 | Temporary ban duration after repeated per-source rate violations |
+| `metrics.bind_host` | `127.0.0.1` | Loopback-only administrative metrics listener; non-loopback addresses are rejected |
+| `metrics.port` | `9108` | Prometheus text endpoint at `/metrics`; must differ from every public service port |
 
 Rejected connections and protocol events use stable `service=... event=...` fields. Verbose logs omit PeerChat message bodies, nicknames, quit reasons, and raw Server Browser frames. Network-controlled fields that remain operationally necessary are capped at 256 emitted characters; backslashes, line breaks, terminal controls, Unicode format controls, and non-ASCII separators are escaped before interpolation. Source addresses remain available for abuse diagnosis and should be retained only as long as operationally necessary.
 

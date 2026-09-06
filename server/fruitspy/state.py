@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
+from .metrics import MetricsRegistry
 
 LOG = logging.getLogger(__name__)
 
@@ -53,11 +54,13 @@ class ServerState:
         nat_session_ttl: int,
         max_reported_servers: int = 2048,
         max_nat_sessions: int = 4096,
+        metrics: MetricsRegistry | None = None,
     ) -> None:
         self.reported_server_ttl = reported_server_ttl
         self.nat_session_ttl = nat_session_ttl
         self.max_reported_servers = max_reported_servers
         self.max_nat_sessions = max_nat_sessions
+        self.metrics = metrics or MetricsRegistry()
         self.reported_servers: dict[Address, ReportedServer] = {}
         self.nat_sessions: dict[bytes, NatSession] = {}
         self._server_change_events: set[asyncio.Event] = set()
@@ -83,6 +86,7 @@ class ServerState:
             self._notify_server_change()
         if keys.get("statechanged") == "2":
             self.remove_server(source)
+        self._update_metrics()
         return server
 
     def register_server(self, source: Address) -> ReportedServer | None:
@@ -94,12 +98,14 @@ class ServerState:
             if first_registration:
                 server.registered_at = server.last_seen
                 self._notify_server_change()
+            self._update_metrics()
         return server
 
     def remove_server(self, source: Address) -> None:
         server = self.reported_servers.pop(source, None)
         if server is not None and server.registered:
             self._notify_server_change()
+        self._update_metrics()
 
     def subscribe_server_changes(self) -> asyncio.Event:
         event = asyncio.Event()
@@ -165,6 +171,7 @@ class ServerState:
             client_index=client_index,
         )
         session.last_seen = time.monotonic()
+        self._update_metrics()
         return session, event
 
     def expire(self) -> tuple[int, int]:
@@ -190,9 +197,24 @@ class ServerState:
         }
         if server_list_changed:
             self._notify_server_change()
+        self._update_metrics()
         return (
             reported_count - len(self.reported_servers),
             nat_count - len(self.nat_sessions),
+        )
+
+    def _update_metrics(self) -> None:
+        self.metrics.set_gauge(
+            "fruitspy_qr_reported_servers",
+            len(self.reported_servers),
+        )
+        self.metrics.set_gauge(
+            "fruitspy_qr_registered_servers",
+            sum(server.registered for server in self.reported_servers.values()),
+        )
+        self.metrics.set_gauge(
+            "fruitspy_natneg_sessions",
+            len(self.nat_sessions),
         )
 
     async def expire_periodically(self, interval_seconds: int | float) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -70,6 +71,12 @@ class RelayConfig:
     sessions: int
 
 
+@dataclass(frozen=True, slots=True)
+class MetricsConfig:
+    bind_host: str
+    port: int
+
+
 
 @dataclass(frozen=True, slots=True)
 class ServerConfig:
@@ -79,11 +86,20 @@ class ServerConfig:
     timeouts: TimeoutConfig
     limits: LimitConfig
     relay: RelayConfig
+    metrics: MetricsConfig
 
 def load_config(path: str | Path) -> ServerConfig:
     source = Path(path)
     raw = json.loads(source.read_text(encoding="utf-8"))
-    expected_fields = {"bind_host", "game", "ports", "timeouts", "limits", "relay"}
+    expected_fields = {
+        "bind_host",
+        "game",
+        "ports",
+        "timeouts",
+        "limits",
+        "relay",
+        "metrics",
+    }
     unknown_fields = sorted(set(raw) - expected_fields)
     if unknown_fields:
         raise ValueError(f"unknown top-level configuration fields: {', '.join(unknown_fields)}")
@@ -92,6 +108,7 @@ def load_config(path: str | Path) -> ServerConfig:
     timeouts = TimeoutConfig(**raw["timeouts"])
     limits = LimitConfig(**raw["limits"])
     relay = RelayConfig(**raw["relay"])
+    metrics = MetricsConfig(**raw["metrics"])
     if game.name != "FruitNinjaand":
         raise ValueError("Fruit Ninja 1.7.6 requires game name FruitNinjaand")
     if len(game.secret_key) != 6:
@@ -104,6 +121,21 @@ def load_config(path: str | Path) -> ServerConfig:
     ):
         if not 1 <= value <= 65535:
             raise ValueError(f"invalid port: {value}")
+    try:
+        metrics_address = ipaddress.ip_address(metrics.bind_host)
+    except ValueError as error:
+        raise ValueError("metrics bind_host must be a loopback IP address") from error
+    if not metrics_address.is_loopback:
+        raise ValueError("metrics bind_host must be a loopback IP address")
+    if not 1 <= metrics.port <= 65535:
+        raise ValueError("metrics port must be between 1 and 65535")
+    if metrics.port in {
+        ports.availability_qr_udp,
+        ports.peerchat_tcp,
+        ports.server_browser_tcp,
+        ports.natneg_udp,
+    }:
+        raise ValueError("metrics port must differ from public service ports")
     if not 512 <= limits.peerchat_line_bytes <= 65535:
         raise ValueError("peerchat_line_bytes must be between 512 and 65535")
     if not 3 <= limits.server_browser_frame_bytes <= 65535:
@@ -221,4 +253,5 @@ def load_config(path: str | Path) -> ServerConfig:
         timeouts=timeouts,
         limits=limits,
         relay=relay,
+        metrics=metrics,
     )

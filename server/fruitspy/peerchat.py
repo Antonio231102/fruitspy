@@ -10,6 +10,7 @@ from .admission import ConnectionAdmission, TokenBucket
 from .config import ServerConfig
 from .crypto import PeerChatCipher
 from .log_fields import sanitize_log_field
+from .metrics import MetricsRegistry
 
 LOG = logging.getLogger(__name__)
 
@@ -40,8 +41,13 @@ class ChatChannel:
 
 
 class PeerChatServer:
-    def __init__(self, config: ServerConfig) -> None:
+    def __init__(
+        self,
+        config: ServerConfig,
+        metrics: MetricsRegistry | None = None,
+    ) -> None:
         self.config = config
+        self.metrics = metrics or MetricsRegistry()
         self.clients: dict[str, PeerChatClient] = {}
         self.channels: dict[str, ChatChannel] = {}
         self.admission = ConnectionAdmission(
@@ -56,12 +62,21 @@ class PeerChatServer:
                 "service=peerchat event=admission_rejected source=%s",
                 client.host,
             )
+            self.metrics.increment(
+                "fruitspy_admission_rejections_total",
+                service="peerchat",
+                reason="connection_limit",
+            )
             writer.close()
             try:
                 await asyncio.wait_for(writer.wait_closed(), 1)
             except (TimeoutError, ConnectionError):
                 writer.transport.abort()
             return
+        self.metrics.set_gauge(
+            "fruitspy_peerchat_clients",
+            self.admission.total,
+        )
         LOG.info(
             "service=peerchat event=connected connection=%s source=%s",
             client.connection_id,
@@ -78,11 +93,20 @@ class PeerChatServer:
                 client.host,
                 sanitize_log_field(error),
             )
+            self.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="peerchat",
+                reason="malformed",
+            )
         finally:
             try:
                 await client.disconnect("Client exited")
             finally:
                 self.admission.release(client.host)
+                self.metrics.set_gauge(
+                    "fruitspy_peerchat_clients",
+                    self.admission.total,
+                )
 
     def channel(self, name: str) -> ChatChannel:
         folded = name.casefold()
@@ -94,6 +118,10 @@ class PeerChatServer:
                 participant_limit=2 if folded.startswith(staging_prefix) else None,
             )
             self.channels[folded] = channel
+            self.metrics.set_gauge(
+                "fruitspy_peerchat_rooms",
+                len(self.channels),
+            )
         return channel
 
 
@@ -197,6 +225,11 @@ class PeerChatClient:
                 self.connection_id,
                 self.host,
                 log_name,
+            )
+            self.server.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="peerchat",
+                reason="budget",
             )
             await self.numeric(263, f"{name} :Command budget exceeded")
             await self.disconnect("Command budget exceeded")
@@ -327,6 +360,11 @@ class PeerChatClient:
                 current,
                 limit,
             )
+            self.server.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="peerchat",
+                reason="capacity",
+            )
             await self.numeric(405, f"{channel_name} :You have joined too many channels")
             return
         if (
@@ -344,6 +382,11 @@ class PeerChatClient:
                 sanitize_log_field(channel.name, 128),
                 len(channel.users),
                 channel.participant_limit,
+            )
+            self.server.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="peerchat",
+                reason="capacity",
             )
             await self.numeric(471, f"{channel.name} :Cannot join channel (+l)")
             return
@@ -385,6 +428,10 @@ class PeerChatClient:
         self.channels.discard(channel.name.casefold())
         if not channel.users:
             self.server.channels.pop(channel.name.casefold(), None)
+            self.server.metrics.set_gauge(
+                "fruitspy_peerchat_rooms",
+                len(self.server.channels),
+            )
 
     async def cmd_names(self, params: str) -> None:
         channel = self.server.channels.get(params.strip().casefold())
@@ -602,6 +649,11 @@ class PeerChatClient:
             command,
             cost,
         )
+        self.server.metrics.increment(
+            "fruitspy_protocol_rejections_total",
+            service="peerchat",
+            reason="budget",
+        )
         await self.numeric(263, f"{command} :State creation budget exceeded")
         return False
 
@@ -627,6 +679,11 @@ class PeerChatClient:
                 len(collection),
                 requested_new,
                 limit,
+            )
+            self.server.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="peerchat",
+                reason="capacity",
             )
             await self.numeric(263, f"{command} :Resource limit exceeded")
             return False
@@ -667,6 +724,10 @@ class PeerChatClient:
             channel.operators.discard(self.nick.casefold())
             if not channel.users:
                 self.server.channels.pop(channel_name, None)
+        self.server.metrics.set_gauge(
+            "fruitspy_peerchat_rooms",
+            len(self.server.channels),
+        )
         if self.nick:
             self.server.clients.pop(self.nick.casefold(), None)
         self.writer.close()

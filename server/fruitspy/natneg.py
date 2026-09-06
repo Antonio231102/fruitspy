@@ -15,6 +15,7 @@ from .admission import (
 )
 from .config import ServerConfig
 from .log_fields import sanitize_log_field
+from .metrics import MetricsRegistry
 from .state import Address, NatPeerClaimRejected, ServerState
 
 LOG = logging.getLogger(__name__)
@@ -96,9 +97,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         config: ServerConfig,
         state: ServerState,
         udp_admission: UdpAdmission | None = None,
+        metrics: MetricsRegistry | None = None,
     ) -> None:
         self.config = config
         self.state = state
+        self.metrics = metrics or state.metrics
         self.transport: asyncio.DatagramTransport | None = None
         self.udp_admission = udp_admission or create_udp_admission(config)
         self._relay_expirations: dict[bytes, asyncio.TimerHandle] = {}
@@ -135,6 +138,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 addr[0],
                 decision.value,
             )
+            self.metrics.increment(
+                "fruitspy_admission_rejections_total",
+                service="natneg",
+                reason=decision.value,
+            )
             return
         now = time.monotonic()
         self._expire_relays(now)
@@ -150,6 +158,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 "discarding malformed NatNeg packet from %s: %s",
                 addr,
                 sanitize_log_field(error),
+            )
+            self.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="natneg",
+                reason="malformed",
             )
             return
         if self.transport is not None:
@@ -326,8 +339,8 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             return []
         return []
 
-    @staticmethod
     def _bounded_responses(
+        self,
         request: bytes,
         responses: list[tuple[bytes, Address]],
         source: Address,
@@ -345,6 +358,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             source,
             len(request),
             response_bytes,
+        )
+        self.metrics.increment(
+            "fruitspy_protocol_rejections_total",
+            service="natneg",
+            reason="amplification",
         )
         return []
 
@@ -386,6 +404,10 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 addr,
             )
             return
+        self.metrics.increment(
+            "fruitspy_natneg_reports_total",
+            result="success" if success else "failure",
+        )
         now = time.monotonic()
         session.last_seen = now
         relay = self._relays.get(cookie)
@@ -411,9 +433,28 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                         round((time.monotonic() - relay.started_at) * 1000),
                         len(relay.ready),
                     )
+                    self.metrics.increment(
+                        "fruitspy_natneg_outcomes_total",
+                        outcome="relay",
+                    )
+                    self.metrics.increment(
+                        "fruitspy_relay_events_total",
+                        event="established",
+                    )
+                    setup_started = (
+                        session.paired_at
+                        if session.paired_at is not None
+                        else relay.started_at
+                    )
+                    self.metrics.observe(
+                        "fruitspy_natneg_setup_seconds",
+                        max(0.0, now - setup_started),
+                        path="relay",
+                    )
             return
         if not success or client_index in session.successful_reports:
             return
+        first_direct_outcome = not session.successful_reports
         session.successful_reports.add(client_index)
         handle = self._fallbacks.pop(cookie, None)
         if handle is not None:
@@ -429,6 +470,16 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             client_index,
             elapsed,
         )
+        if first_direct_outcome:
+            self.metrics.increment(
+                "fruitspy_natneg_outcomes_total",
+                outcome="direct",
+            )
+            self.metrics.observe(
+                "fruitspy_natneg_setup_seconds",
+                elapsed / 1000,
+                path="direct",
+            )
 
     def _activate_relay(self, cookie: bytes) -> None:
         self._fallbacks.pop(cookie, None)
@@ -449,6 +500,15 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 "service=natneg event=relay_unavailable session=%s reason=capacity",
                 cookie.hex(),
             )
+            self.metrics.increment(
+                "fruitspy_relay_events_total",
+                event="unavailable",
+            )
+            self.metrics.increment(
+                "fruitspy_protocol_rejections_total",
+                service="natneg",
+                reason="capacity",
+            )
             return
         addresses = {peer.address for peer in session.peers.values()}
         if len(addresses) != 2:
@@ -456,6 +516,10 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 "service=natneg event=relay_unavailable session=%s "
                 "reason=endpoint_collision",
                 cookie.hex(),
+            )
+            self.metrics.increment(
+                "fruitspy_relay_events_total",
+                event="unavailable",
             )
             return
         relay_pings: dict[int, bytes] = {}
@@ -478,6 +542,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                     peer.address,
                     NATNEG_MIN_INIT_BYTES,
                     cumulative_response_bytes,
+                )
+                self.metrics.increment(
+                    "fruitspy_protocol_rejections_total",
+                    service="natneg",
+                    reason="amplification",
                 )
                 return
             relay_pings[index] = relay_ping
@@ -519,6 +588,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             cookie.hex(),
             round((now - paired_at) * 1000),
             len(self._relays),
+        )
+        self.metrics.set_gauge("fruitspy_natneg_relays", len(self._relays))
+        self.metrics.increment(
+            "fruitspy_relay_events_total",
+            event="activated",
         )
 
     def _handle_relay_ping(self, data: bytes, addr: Address, now: float) -> bool:
@@ -570,6 +644,10 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         endpoint = relay.endpoints[index]
         if len(data) > self.config.relay.packet_bytes:
             relay.drops += 1
+            self.metrics.increment(
+                "fruitspy_relay_packets_total",
+                result="dropped",
+            )
             LOG.debug(
                 "service=natneg event=relay_packet_dropped session=%s "
                 "peer=%d reason=packet_size bytes=%d",
@@ -580,6 +658,10 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             return True
         if relay.ready != {0, 1}:
             relay.drops += 1
+            self.metrics.increment(
+                "fruitspy_relay_packets_total",
+                result="dropped",
+            )
             return True
         if not endpoint.allow(
             len(data),
@@ -588,6 +670,10 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             now,
         ):
             relay.drops += 1
+            self.metrics.increment(
+                "fruitspy_relay_packets_total",
+                result="dropped",
+            )
             LOG.debug(
                 "service=natneg event=relay_packet_dropped session=%s "
                 "peer=%d reason=byte_rate",
@@ -598,10 +684,18 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         destination = relay.endpoints[1 - index].address
         if self.transport is None:
             relay.drops += 1
+            self.metrics.increment(
+                "fruitspy_relay_packets_total",
+                result="dropped",
+            )
             return True
         self.transport.sendto(data, destination)
         relay.packets += 1
         relay.bytes += len(data)
+        self.metrics.increment(
+            "fruitspy_relay_packets_total",
+            result="forwarded",
+        )
         if relay.packets == 1:
             relay.last_metrics_at = now
             LOG.info(
@@ -643,6 +737,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         handle = self._fallbacks.pop(cookie, None)
         if handle is not None:
             handle.cancel()
+        self.metrics.set_gauge("fruitspy_natneg_relays", len(self._relays))
+        self.metrics.increment(
+            "fruitspy_relay_events_total",
+            event="closed",
+        )
         LOG.info(
             "service=natneg event=relay_closed session=%s reason=%s "
             "duration_ms=%d packets=%d bytes=%d drops=%d active_relays=%d",

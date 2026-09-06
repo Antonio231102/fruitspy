@@ -105,6 +105,19 @@ Keep the standard ports and checked-in limits for the initial deployment. Patch 
 
 The GameSpy secret in this configuration is embedded in the original client protocol and is not an administrative password.
 
+Keep the administrative metrics listener on loopback:
+
+```json
+{
+  "metrics": {
+    "bind_host": "127.0.0.1",
+    "port": 9108
+  }
+}
+```
+
+FruitSpy rejects non-loopback metrics addresses and reuse of a public service port.
+
 ## 5. Open the provider firewall
 
 In the VPS provider's firewall or security-group control panel, allow:
@@ -171,6 +184,14 @@ sudo journalctl --unit fruitspy.service --follow
 ```
 
 Diagnostics omit chat bodies, nicknames, client-provided quit reasons, and raw Server Browser frames. Retain source-address logs only as long as needed to diagnose the alpha.
+
+Inspect aggregate operational metrics from the VPS:
+
+```text
+curl --fail http://127.0.0.1:9108/metrics
+```
+
+Do not open TCP 9108 in UFW or the provider firewall. The endpoint has fixed, bounded labels and excludes source addresses, cookies, identifiers, nicknames, room names, hostnames, message content, and packet payloads. It resets on service restart and stores nothing on disk. Use an authenticated SSH tunnel rather than exposing it when remote collection is required.
 
 ### Rootless systemd alternative
 

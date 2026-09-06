@@ -54,5 +54,9 @@
     "bytes_per_second": 262144,
     "byte_burst": 524288,
     "sessions": 1024
+  },
+  "metrics": {
+    "bind_host": "127.0.0.1",
+    "port": 9108
   }
 }

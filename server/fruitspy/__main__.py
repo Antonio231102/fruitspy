@@ -8,6 +8,7 @@ from pathlib import Path
 from .admission import create_udp_admission
 from .availability_qr import AvailabilityQRProtocol
 from .config import ServerConfig, load_config
+from .metrics import MetricsHttpServer, MetricsRegistry
 from .natneg import NatNegProtocol
 from .peerchat import PeerChatServer
 from .server_browser import ServerBrowserServer
@@ -18,32 +19,41 @@ LOG = logging.getLogger("fruitspy")
 
 async def run_server(config: ServerConfig) -> None:
     loop = asyncio.get_running_loop()
+    metrics = MetricsRegistry()
     state = ServerState(
         reported_server_ttl=config.timeouts.reported_server_seconds,
         nat_session_ttl=config.timeouts.nat_session_seconds,
         max_reported_servers=config.limits.reported_servers,
         max_nat_sessions=config.limits.nat_sessions,
+        metrics=metrics,
     )
     udp_admission = create_udp_admission(config)
     qr_transport, _ = await loop.create_datagram_endpoint(
-        lambda: AvailabilityQRProtocol(config, state, udp_admission),
+        lambda: AvailabilityQRProtocol(config, state, udp_admission, metrics),
         local_addr=(config.bind_host, config.ports.availability_qr_udp),
     )
     nat_transport, _ = await loop.create_datagram_endpoint(
-        lambda: NatNegProtocol(config, state, udp_admission),
+        lambda: NatNegProtocol(config, state, udp_admission, metrics),
         local_addr=(config.bind_host, config.ports.natneg_udp),
     )
-    peerchat = PeerChatServer(config)
+    peerchat = PeerChatServer(config, metrics)
     peerchat_listener = await asyncio.start_server(
         peerchat.handle,
         config.bind_host,
         config.ports.peerchat_tcp,
     )
-    server_browser = ServerBrowserServer(config, state)
+    server_browser = ServerBrowserServer(config, state, metrics)
     browser_listener = await asyncio.start_server(
         server_browser.handle,
         config.bind_host,
         config.ports.server_browser_tcp,
+    )
+    metrics_server = MetricsHttpServer(metrics)
+    metrics_listener = await asyncio.start_server(
+        metrics_server.handle,
+        config.metrics.bind_host,
+        config.metrics.port,
+        limit=4096,
     )
 
     LOG.info("FruitSpy game=%s", config.game.name)
@@ -51,6 +61,11 @@ async def run_server(config: ServerConfig) -> None:
     LOG.info("PeerChat TCP %s:%d", config.bind_host, config.ports.peerchat_tcp)
     LOG.info("Server Browser TCP %s:%d", config.bind_host, config.ports.server_browser_tcp)
     LOG.info("NatNeg UDP %s:%d", config.bind_host, config.ports.natneg_udp)
+    LOG.info(
+        "Metrics HTTP %s:%d",
+        config.metrics.bind_host,
+        config.metrics.port,
+    )
     LOG.info(
         "Relay policy=%s fallback=%.1fs ttl=%ds",
         config.relay.policy,
@@ -62,6 +77,7 @@ async def run_server(config: ServerConfig) -> None:
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(peerchat_listener.serve_forever())
             tasks.create_task(browser_listener.serve_forever())
+            tasks.create_task(metrics_listener.serve_forever())
             tasks.create_task(
                 state.expire_periodically(
                     config.timeouts.state_expiry_interval_seconds,
@@ -70,10 +86,12 @@ async def run_server(config: ServerConfig) -> None:
     finally:
         peerchat_listener.close()
         browser_listener.close()
+        metrics_listener.close()
         qr_transport.close()
         nat_transport.close()
         await peerchat_listener.wait_closed()
         await browser_listener.wait_closed()
+        await metrics_listener.wait_closed()
 
 
 def main() -> None:

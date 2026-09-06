@@ -1,6 +1,7 @@
 from fruitspy.config import (
     GameConfig,
     LimitConfig,
+    MetricsConfig,
     RelayConfig,
     PortConfig,
     ServerConfig,
@@ -65,5 +66,9 @@ def test_config() -> ServerConfig:
             bytes_per_second=262144,
             byte_burst=524288,
             sessions=32,
+        ),
+        metrics=MetricsConfig(
+            bind_host="127.0.0.1",
+            port=9108,
         ),
     )

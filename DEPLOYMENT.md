@@ -102,6 +102,14 @@ Inspect structured events without enabling payload-level diagnostics:
 sudo journalctl --unit fruitspy.service --since today
 ```
 
+Inspect bounded aggregate metrics locally:
+
+```text
+curl --fail http://127.0.0.1:9108/metrics
+```
+
+The metrics listener is separate from the four GameSpy listeners. Configuration validation requires `metrics.bind_host` to be a loopback IP address and rejects a metrics port that matches any public service port. Never open TCP 9108 in the host or provider firewall; use an authenticated SSH tunnel if a remote scraper needs access. The fixed schema excludes IP addresses, connection/session identifiers, cookies, nicknames, room names, hostnames, messages, and payloads. Values are process-local and reset on restart; any external retention is the operator's responsibility.
+
 ## Health check
 
 Run from the server itself:

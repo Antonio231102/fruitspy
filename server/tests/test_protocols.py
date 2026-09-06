@@ -202,7 +202,8 @@ class ServerBrowserTests(unittest.TestCase):
             challenge,
             "\\hostname\\maxplayers\\gamemode",
         )
-        response = ServerBrowserServer(config, state).handle_request(request, "10.0.0.20")
+        server = ServerBrowserServer(config, state)
+        response = server.handle_request(request, "10.0.0.20")
         self.assertIsNotNone(response)
         assert response is not None
         body = decrypt_server_browser(response, challenge)
@@ -212,6 +213,16 @@ class ServerBrowserTests(unittest.TestCase):
         self.assertIn(b"2\x00", body)
         self.assertIn(b"openstaging\x00", body)
         self.assertTrue(body.endswith(b"\x00\xff\xff\xff\xff"))
+        metrics = server.metrics.render().decode("utf-8")
+        self.assertIn(
+            'fruitspy_discovery_requests_total{kind="list"} 1',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_discovery_results_total{result="nonempty"} 1',
+            metrics,
+        )
+        self.assertNotIn("10.0.0.20", metrics)
 
     def test_server_list_advertises_observed_source_endpoint(self) -> None:
         config = test_config()
@@ -398,6 +409,41 @@ class NatNegTests(unittest.TestCase):
         self.assertEqual(protocol._relays, {})
         transport.sendto.assert_not_called()
         self.assertIn("phase=relay_fallback", "\n".join(captured.output))
+
+    def test_direct_outcome_metrics_are_aggregated_without_client_data(
+        self,
+    ) -> None:
+        protocol = NatNegProtocol(test_config(), ServerState(120, 60))
+        cookie = b"PRIV"
+        first_addr = ("10.0.0.10", 40000)
+        second_addr = ("10.0.0.20", 40001)
+        protocol.handle_datagram(natneg_init(cookie, 0), first_addr)
+        protocol.handle_datagram(natneg_init(cookie, 1), second_addr)
+        for index, source in enumerate((first_addr, second_addr)):
+            report = (
+                MAGIC
+                + bytes((3, NN_REPORT))
+                + cookie
+                + bytes((0, index, 1))
+                + b"\x00" * 8
+            )
+            protocol.handle_datagram(report, source)
+
+        metrics = protocol.metrics.render().decode("utf-8")
+        self.assertIn(
+            'fruitspy_natneg_reports_total{result="success"} 2',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_natneg_outcomes_total{outcome="direct"} 1',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_natneg_setup_seconds_count{path="direct"} 1',
+            metrics,
+        )
+        self.assertNotIn(cookie.hex(), metrics)
+        self.assertNotIn(first_addr[0], metrics)
 
     def test_pairing_emits_structured_lifecycle_events(self) -> None:
         protocol = NatNegProtocol(test_config(), ServerState(120, 60))
