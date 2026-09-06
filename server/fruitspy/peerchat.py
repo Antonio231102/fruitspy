@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from .admission import ConnectionAdmission, TokenBucket
 from .config import ServerConfig
 from .crypto import PeerChatCipher
+from .log_fields import sanitize_log_field
 
 LOG = logging.getLogger(__name__)
 
@@ -75,7 +76,7 @@ class PeerChatServer:
                 "service=peerchat event=request_rejected connection=%s source=%s error=%s",
                 client.connection_id,
                 client.host,
-                error,
+                sanitize_log_field(error),
             )
         finally:
             try:
@@ -188,13 +189,14 @@ class PeerChatClient:
     async def command(self, line: str) -> None:
         command, _, params = line.partition(" ")
         name = command.upper()
+        log_name = sanitize_log_field(name, 64)
         if not self.command_budget.allow():
             LOG.warning(
                 "service=peerchat event=client_budget_exhausted connection=%s "
                 "source=%s budget=commands command=%s",
                 self.connection_id,
                 self.host,
-                name,
+                log_name,
             )
             await self.numeric(263, f"{name} :Command budget exceeded")
             await self.disconnect("Command budget exceeded")
@@ -202,7 +204,7 @@ class PeerChatClient:
         LOG.debug(
             "service=peerchat event=receive connection=%s command=%s bytes=%d",
             self.connection_id,
-            name,
+            log_name,
             len(line.encode("utf-8")),
         )
         handler = getattr(self, f"cmd_{name.lower()}", None)
@@ -339,7 +341,7 @@ class PeerChatClient:
                 "participants=%d limit=%d",
                 self.connection_id,
                 self.host,
-                channel.name,
+                sanitize_log_field(channel.name, 128),
                 len(channel.users),
                 channel.participant_limit,
             )

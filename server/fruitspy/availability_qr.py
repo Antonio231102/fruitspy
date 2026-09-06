@@ -13,6 +13,7 @@ from .admission import (
 )
 from .config import ServerConfig
 from .crypto import gsseckey
+from .log_fields import sanitize_log_field
 from .state import Address, ServerState
 
 LOG = logging.getLogger(__name__)
@@ -79,7 +80,11 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         try:
             response = self.handle_datagram(data, addr)
         except (ValueError, UnicodeError) as error:
-            LOG.warning("discarding malformed QR packet from %s: %s", addr, error)
+            LOG.warning(
+                "discarding malformed QR packet from %s: %s",
+                addr,
+                sanitize_log_field(error),
+            )
             return
         if response is not None and self.transport is not None:
             self.transport.sendto(response, addr)

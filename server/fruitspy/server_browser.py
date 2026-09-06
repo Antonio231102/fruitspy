@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from .admission import ConnectionAdmission
 from .config import ServerConfig
 from .crypto import EnctypeX
+from .log_fields import sanitize_log_field
 from .state import Address, ReportedServer, ServerState
 
 LOG = logging.getLogger(__name__)
@@ -200,7 +201,7 @@ class ServerBrowserServer:
                 "connection=%s source=%s error=%s",
                 connection_id,
                 source,
-                error,
+                sanitize_log_field(error),
             )
         finally:
             self.state.unsubscribe_server_changes(change_event)

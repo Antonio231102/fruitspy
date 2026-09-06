@@ -13,6 +13,7 @@ from .admission import (
     create_udp_admission,
 )
 from .config import ServerConfig
+from .log_fields import sanitize_log_field
 from .state import Address, NatPeerClaimRejected, ServerState
 
 LOG = logging.getLogger(__name__)
@@ -142,7 +143,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         try:
             responses = self.handle_datagram(data, addr)
         except (ValueError, OSError) as error:
-            LOG.warning("discarding malformed NatNeg packet from %s: %s", addr, error)
+            LOG.warning(
+                "discarding malformed NatNeg packet from %s: %s",
+                addr,
+                sanitize_log_field(error),
+            )
             return
         if self.transport is not None:
             for response, destination in responses:

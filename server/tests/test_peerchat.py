@@ -101,6 +101,18 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
+    async def test_external_command_log_field_is_sanitized(self) -> None:
+        client = await EncryptedPeerClient.connect(self.port)
+        try:
+            with self.assertLogs("fruitspy.peerchat", level="DEBUG") as captured:
+                await client.send("BAD\x1bFORGED")
+                await client.read_until("Unknown command")
+            output = "\n".join(captured.output)
+            self.assertNotIn("\x1b", output)
+            self.assertIn(r"command=BAD\x1bFORGED", output)
+        finally:
+            await client.close()
+
     async def test_welcomed_connection_remains_open_without_traffic(self) -> None:
         client = await EncryptedPeerClient.connect(self.port)
         try:
@@ -385,7 +397,7 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         second = await self.connect_player("player2")
         third = await self.connect_player("player3")
         try:
-            channel_name = "#GSP!FruitNinjaand!limited"
+            channel_name = "#GSP!FruitNinjaand!limited\x1bFORGED"
             await first.send(f"JOIN {channel_name}")
             await first.read_until("End of NAMES list")
             await second.send(f"JOIN {channel_name}")
@@ -403,6 +415,11 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
             output = "\n".join(captured.output)
             self.assertIn("event=room_join_rejected", output)
             self.assertIn("reason=participant_limit participants=2 limit=2", output)
+            self.assertNotIn("\x1b", output)
+            self.assertIn(
+                r"channel=#GSP!FruitNinjaand!limited\x1bFORGED",
+                output,
+            )
 
             await second.send(f"PART {channel_name} :Leaving")
             await first.read_until(f"PART {channel_name}")

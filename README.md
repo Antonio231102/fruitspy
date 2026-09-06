@@ -91,7 +91,7 @@ The unified configuration includes the checked-in safety limits; operators shoul
 | `rate_limit_entry_seconds` | 120 | Idle lifetime for UDP source accounting |
 | `udp_source_ban_seconds` | 60 | Temporary ban duration after repeated per-source rate violations |
 
-Rejected connections and protocol events use stable `service=... event=...` fields. Verbose logs omit PeerChat message bodies, nicknames, quit reasons, and raw Server Browser frames. Source addresses remain available for abuse diagnosis and should be retained only as long as operationally necessary.
+Rejected connections and protocol events use stable `service=... event=...` fields. Verbose logs omit PeerChat message bodies, nicknames, quit reasons, and raw Server Browser frames. Network-controlled fields that remain operationally necessary are capped at 256 emitted characters; backslashes, line breaks, terminal controls, Unicode format controls, and non-ASCII separators are escaped before interpolation. Source addresses remain available for abuse diagnosis and should be retained only as long as operationally necessary.
 
 Channel-limit rejections return IRC numeric `405`; key updates that would exceed a collection return numeric `263` and apply no partial changes. Existing keys remain updateable at capacity. Structured `collection_limit_rejected` events identify the bounded resource without logging key contents.
 
