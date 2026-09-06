@@ -29,6 +29,13 @@ class LimitConfig:
     qr_packet_bytes: int
     natneg_packet_bytes: int
     peerchat_connections: int
+    peerchat_channels: int
+    peerchat_channels_per_client: int
+    peerchat_keys_per_collection: int
+    peerchat_commands_per_second: int
+    peerchat_command_burst: int
+    peerchat_state_creations_per_second: int
+    peerchat_state_creation_burst: int
     server_browser_connections: int
     connections_per_source: int
     udp_packets_per_second: int
@@ -43,6 +50,7 @@ class TimeoutConfig:
     reported_server_seconds: int
     nat_session_seconds: int
     peerchat_handshake_seconds: int
+    state_expiry_interval_seconds: int
     server_browser_idle_seconds: int
     rate_limit_entry_seconds: int
 
@@ -109,6 +117,45 @@ def load_config(path: str | Path) -> ServerConfig:
         limits.server_browser_connections,
     ):
         raise ValueError("connections_per_source must fit the configured connection limits")
+    if not 1 <= limits.peerchat_channels <= 1_000_000:
+        raise ValueError("peerchat_channels must be between 1 and 1000000")
+    if not (
+        1
+        <= limits.peerchat_channels_per_client
+        <= limits.peerchat_channels
+    ):
+        raise ValueError(
+            "peerchat_channels_per_client must fit the configured channel limit"
+        )
+    if not (
+        1
+        <= limits.peerchat_keys_per_collection
+        <= 65535
+    ):
+        raise ValueError("peerchat_keys_per_collection must be between 1 and 65535")
+    if not 1 <= limits.peerchat_commands_per_second <= 65535:
+        raise ValueError("peerchat_commands_per_second must be between 1 and 65535")
+    if not (
+        limits.peerchat_commands_per_second
+        <= limits.peerchat_command_burst
+        <= 65535
+    ):
+        raise ValueError(
+            "peerchat_command_burst must be at least peerchat_commands_per_second"
+        )
+    if not 1 <= limits.peerchat_state_creations_per_second <= 65535:
+        raise ValueError(
+            "peerchat_state_creations_per_second must be between 1 and 65535"
+        )
+    if not (
+        limits.peerchat_state_creations_per_second
+        <= limits.peerchat_state_creation_burst
+        <= 65535
+    ):
+        raise ValueError(
+            "peerchat_state_creation_burst must be at least "
+            "peerchat_state_creations_per_second"
+        )
     if not 1 <= limits.udp_packets_per_second <= 65535:
         raise ValueError("udp_packets_per_second must be between 1 and 65535")
     if not limits.udp_packets_per_second <= limits.udp_burst <= 65535:
@@ -137,6 +184,7 @@ def load_config(path: str | Path) -> ServerConfig:
         ("reported_server_seconds", timeouts.reported_server_seconds),
         ("nat_session_seconds", timeouts.nat_session_seconds),
         ("peerchat_handshake_seconds", timeouts.peerchat_handshake_seconds),
+        ("state_expiry_interval_seconds", timeouts.state_expiry_interval_seconds),
         ("server_browser_idle_seconds", timeouts.server_browser_idle_seconds),
         ("rate_limit_entry_seconds", timeouts.rate_limit_entry_seconds),
     ):

@@ -2,13 +2,36 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 
 
-@dataclass(slots=True)
-class _TokenBucket:
-    tokens: float
-    updated_at: float
+class TokenBucket:
+    def __init__(
+        self,
+        rate_per_second: int,
+        burst: int,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.rate_per_second = rate_per_second
+        self.burst = burst
+        self.clock = clock
+        self.tokens = float(burst)
+        self.updated_at = self.clock()
+
+    def allow(self, cost: int = 1) -> bool:
+        if cost < 1:
+            raise ValueError("token cost must be positive")
+        now = self.clock()
+        elapsed = max(0.0, now - self.updated_at)
+        self.tokens = min(
+            float(self.burst),
+            self.tokens + elapsed * self.rate_per_second,
+        )
+        self.updated_at = now
+        if self.tokens < cost:
+            return False
+        self.tokens -= cost
+        return True
 
 
 class SourceRateLimiter:
@@ -26,7 +49,7 @@ class SourceRateLimiter:
         self.max_sources = max_sources
         self.entry_ttl_seconds = entry_ttl_seconds
         self.clock = clock
-        self._buckets: dict[str, _TokenBucket] = {}
+        self._buckets: dict[str, TokenBucket] = {}
         self._next_expiry_at = self.clock() + entry_ttl_seconds
 
     def allow(self, source: str) -> bool:
@@ -41,22 +64,14 @@ class SourceRateLimiter:
                 self._expire(now)
             if len(self._buckets) >= self.max_sources:
                 return False
-            self._buckets[source] = _TokenBucket(
-                tokens=float(self.burst - 1),
-                updated_at=now,
+            bucket = TokenBucket(
+                self.rate_per_second,
+                self.burst,
+                clock=self.clock,
             )
-            return True
+            self._buckets[source] = bucket
 
-        elapsed = max(0.0, now - bucket.updated_at)
-        bucket.tokens = min(
-            float(self.burst),
-            bucket.tokens + elapsed * self.rate_per_second,
-        )
-        bucket.updated_at = now
-        if bucket.tokens < 1.0:
-            return False
-        bucket.tokens -= 1.0
-        return True
+        return bucket.allow()
 
     def _expire(self, now: float) -> None:
         self._buckets = {

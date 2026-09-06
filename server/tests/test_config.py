@@ -14,6 +14,14 @@ class ConfigTests(unittest.TestCase):
         config = load_config(self.server_root / "config.json")
         self.assertEqual(config.bind_host, "0.0.0.0")
         self.assertEqual(config.limits.natneg_packet_bytes, 512)
+        self.assertEqual(config.limits.peerchat_channels, 1024)
+        self.assertEqual(config.limits.peerchat_channels_per_client, 16)
+        self.assertEqual(config.limits.peerchat_keys_per_collection, 64)
+        self.assertEqual(config.limits.peerchat_commands_per_second, 30)
+        self.assertEqual(config.limits.peerchat_command_burst, 60)
+        self.assertEqual(config.limits.peerchat_state_creations_per_second, 8)
+        self.assertEqual(config.limits.peerchat_state_creation_burst, 32)
+        self.assertEqual(config.timeouts.state_expiry_interval_seconds, 5)
         self.assertEqual(config.relay.policy, "auto")
         self.assertEqual(config.relay.fallback_seconds, 3)
 
@@ -57,6 +65,74 @@ class ConfigTests(unittest.TestCase):
             invalid = Path(directory) / "invalid.json"
             invalid.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "peerchat_handshake_seconds"):
+                load_config(invalid)
+
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["timeouts"]["state_expiry_interval_seconds"] = 0
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "state_expiry_interval_seconds",
+            ):
+                load_config(invalid)
+
+    def test_peerchat_collection_limits_are_validated(self) -> None:
+        source = self.server_root / "config.json"
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["limits"]["peerchat_channels"] = 0
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "peerchat_channels"):
+                load_config(invalid)
+
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["limits"]["peerchat_channels_per_client"] = 0
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "peerchat_channels_per_client",
+            ):
+                load_config(invalid)
+
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["limits"]["peerchat_keys_per_collection"] = 65536
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "peerchat_keys_per_collection",
+            ):
+                load_config(invalid)
+
+    def test_peerchat_client_budgets_are_validated(self) -> None:
+        source = self.server_root / "config.json"
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["limits"]["peerchat_command_burst"] = (
+            payload["limits"]["peerchat_commands_per_second"] - 1
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "peerchat_command_burst"):
+                load_config(invalid)
+
+        payload = json.loads(source.read_text(encoding="utf-8"))
+        payload["limits"]["peerchat_state_creation_burst"] = (
+            payload["limits"]["peerchat_state_creations_per_second"] - 1
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = Path(directory) / "invalid.json"
+            invalid.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "peerchat_state_creation_burst",
+            ):
                 load_config(invalid)
 
     def test_relay_policy_and_limits_are_validated(self) -> None:

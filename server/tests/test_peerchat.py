@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from dataclasses import replace
 
 from fruitspy.crypto import PeerChatCipher
 from fruitspy.peerchat import PeerChatServer
@@ -75,6 +76,13 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         self.listener.close()
         await self.listener.wait_closed()
 
+    async def connect_player(self, nick: str) -> EncryptedPeerClient:
+        client = await EncryptedPeerClient.connect(self.port)
+        await client.send(f"NICK {nick}")
+        await client.send(f"USER {nick} 0 * :{nick}")
+        await client.read_until(f"376 {nick}")
+        return client
+
     async def test_usrip_reports_observed_address_in_gamespy_format(self) -> None:
         client = await EncryptedPeerClient.connect(self.port)
         try:
@@ -141,6 +149,282 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await first.close()
             await second.close()
+
+    async def test_channel_limits_reject_without_creating_membership(self) -> None:
+        self.service.config = replace(
+            self.service.config,
+            limits=replace(
+                self.service.config.limits,
+                peerchat_channels=2,
+                peerchat_channels_per_client=1,
+            ),
+        )
+        first = await self.connect_player("player1")
+        second = await self.connect_player("player2")
+        third = await self.connect_player("player3")
+        try:
+            await first.send("JOIN #one")
+            await first.read_until("End of NAMES list")
+
+            with self.assertLogs("fruitspy.peerchat", level="WARNING") as captured:
+                await first.send("JOIN #two")
+                per_client = await first.read_until("You have joined too many channels")
+            self.assertIn("405 player1 #two", per_client)
+            self.assertNotIn("#two", self.service.channels)
+            self.assertNotIn("#two", self.service.clients["player1"].channels)
+            self.assertIn("resource=channels_per_client current=1 limit=1", "\n".join(captured.output))
+
+            await second.send("JOIN #two")
+            await second.read_until("End of NAMES list")
+            with self.assertLogs("fruitspy.peerchat", level="WARNING") as captured:
+                await third.send("JOIN #three")
+                global_limit = await third.read_until("You have joined too many channels")
+            self.assertIn("405 player3 #three", global_limit)
+            self.assertNotIn("#three", self.service.channels)
+            self.assertIn("resource=channels current=2 limit=2", "\n".join(captured.output))
+
+            await first.send("PART #one :Leaving")
+            await first.read_until("PART #one")
+            await third.send("JOIN #three")
+            await third.read_until("End of NAMES list")
+            self.assertIn("#three", self.service.channels)
+            self.assertIn("#three", self.service.clients["player3"].channels)
+        finally:
+            await first.close()
+            await second.close()
+            await third.close()
+
+    async def test_all_peerchat_key_collections_are_bounded_atomically(self) -> None:
+        self.service.config = replace(
+            self.service.config,
+            limits=replace(
+                self.service.config.limits,
+                peerchat_keys_per_collection=2,
+            ),
+        )
+        first = await self.connect_player("player1")
+        outsider = await self.connect_player("player2")
+        try:
+            await first.send("SETKEY :\\alpha\\1")
+            await first.send("PING user-key-barrier")
+            await first.read_until("PONG :user-key-barrier")
+            with self.assertLogs("fruitspy.peerchat", level="WARNING") as captured:
+                await first.send("SETKEY :\\alpha\\changed\\beta\\2")
+                await first.read_until("SETKEY :Resource limit exceeded")
+            first_keys = self.service.clients["player1"].user_keys
+            self.assertEqual(first_keys, {"username": "player1", "alpha": "1"})
+            self.assertNotIn("beta", first_keys)
+            output = "\n".join(captured.output)
+            self.assertIn(
+                "resource=user_keys current=2 requested_new=1 limit=2",
+                output,
+            )
+            await first.send("SETKEY :\\alpha\\updated")
+            await first.send("PING user-key-update-barrier")
+            await first.read_until("PONG :user-key-update-barrier")
+            self.assertEqual(first_keys["alpha"], "updated")
+
+            channel_name = "#keys"
+            await first.send(f"JOIN {channel_name}")
+            await first.read_until("End of NAMES list")
+            channel = self.service.channels[channel_name]
+            await first.send(f"SETCHANKEY {channel_name} :\\one\\1\\two\\2")
+            await first.send("PING channel-key-barrier")
+            await first.read_until("PONG :channel-key-barrier")
+            with self.assertLogs("fruitspy.peerchat", level="WARNING") as captured:
+                await first.send(
+                    f"SETCHANKEY {channel_name} :\\one\\changed\\three\\3"
+                )
+                await first.read_until("SETCHANKEY :Resource limit exceeded")
+            self.assertEqual(channel.keys, {"one": "1", "two": "2"})
+            output = "\n".join(captured.output)
+            self.assertIn(
+                "resource=channel_keys current=2 requested_new=1 limit=2",
+                output,
+            )
+
+            await first.send(f"SETCKEY {channel_name} player1 :\\one\\1\\two\\2")
+            await first.read_until("BCAST")
+            with self.assertLogs("fruitspy.peerchat", level="WARNING") as captured:
+                await first.send(
+                    f"SETCKEY {channel_name} player1 :\\one\\changed\\three\\3"
+                )
+                await first.read_until("SETCKEY :Resource limit exceeded")
+            self.assertEqual(
+                channel.client_keys["player1"],
+                {"one": "1", "two": "2"},
+            )
+            output = "\n".join(captured.output)
+            self.assertIn(
+                "resource=client_keys current=2 requested_new=1 limit=2",
+                output,
+            )
+
+            await first.send(f"SETCKEY {channel_name} player2 :\\outside\\1")
+            await first.send("PING client-key-barrier")
+            await first.read_until("PONG :client-key-barrier")
+            self.assertNotIn("player2", channel.client_keys)
+            await first.send(f"MODE {channel_name} +o player2")
+            mode_rejection = await first.read_until("They aren't on that channel")
+            self.assertIn(f"441 player1 player2 {channel_name}", mode_rejection)
+            self.assertNotIn("player2", channel.operators)
+        finally:
+            await first.close()
+            await outsider.close()
+
+    async def test_command_budget_disconnects_flooding_client(self) -> None:
+        self.service.config = replace(
+            self.service.config,
+            limits=replace(
+                self.service.config.limits,
+                peerchat_commands_per_second=1,
+                peerchat_command_burst=5,
+            ),
+        )
+        client = await self.connect_player("player1")
+        try:
+            await client.send("PING one")
+            await client.read_until("PONG :one")
+            await client.send("PING two")
+            await client.read_until("PONG :two")
+
+            with self.assertLogs("fruitspy.peerchat", level="WARNING") as captured:
+                await client.send("PING three")
+                rejection = await client.read_until("Command budget exceeded")
+
+            self.assertIn("263 player1 PING :Command budget exceeded", rejection)
+            self.assertIn(
+                "event=client_budget_exhausted",
+                "\n".join(captured.output),
+            )
+            self.assertIn("budget=commands command=PING", "\n".join(captured.output))
+            self.assertEqual(
+                await asyncio.wait_for(client.reader.read(1), 2),
+                b"",
+            )
+            self.assertNotIn("player1", self.service.clients)
+        finally:
+            await client.close()
+
+    async def test_state_creation_budget_rejects_without_partial_state(self) -> None:
+        self.service.config = replace(
+            self.service.config,
+            limits=replace(
+                self.service.config.limits,
+                peerchat_state_creations_per_second=1,
+                peerchat_state_creation_burst=4,
+            ),
+        )
+        client = await self.connect_player("player1")
+        try:
+            await client.send("JOIN #budget")
+            await client.read_until("End of NAMES list")
+            await client.send("SETKEY :\\one\\1")
+            await client.send("PING initial-state-barrier")
+            await client.read_until("PONG :initial-state-barrier")
+            await client.send("PART #budget :Leaving")
+            await client.read_until("PART #budget")
+            budget = self.service.clients["player1"].state_creation_budget
+            budget.tokens = 0
+            budget.updated_at = budget.clock()
+
+            with self.assertLogs("fruitspy.peerchat", level="WARNING") as captured:
+                await client.send("JOIN #rejected")
+                join_rejection = await client.read_until(
+                    "JOIN :State creation budget exceeded"
+                )
+
+            self.assertIn("263 player1", join_rejection)
+            self.assertNotIn("#rejected", self.service.channels)
+            self.assertNotIn(
+                "#rejected",
+                self.service.clients["player1"].channels,
+            )
+            output = "\n".join(captured.output)
+            self.assertIn("budget=state_creation command=JOIN cost=2", output)
+
+            budget.tokens = 0
+            budget.updated_at = budget.clock()
+            with self.assertLogs("fruitspy.peerchat", level="WARNING") as captured:
+                await client.send("SETKEY :\\one\\changed\\two\\2")
+                key_rejection = await client.read_until(
+                    "SETKEY :State creation budget exceeded"
+                )
+            self.assertIn("263 player1", key_rejection)
+            self.assertEqual(
+                self.service.clients["player1"].user_keys,
+                {"username": "player1", "one": "1"},
+            )
+            self.assertIn(
+                "budget=state_creation command=SETKEY cost=1",
+                "\n".join(captured.output),
+            )
+
+            await client.send("SETKEY :\\one\\updated")
+            await client.send("PING existing-state-update")
+            response = await client.read_until("PONG :existing-state-update")
+            self.assertIn("PONG :existing-state-update", response)
+            self.assertEqual(
+                self.service.clients["player1"].user_keys["one"],
+                "updated",
+            )
+        finally:
+            await client.close()
+
+    async def test_third_staging_room_participant_is_rejected(self) -> None:
+        first = await self.connect_player("player1")
+        second = await self.connect_player("player2")
+        third = await self.connect_player("player3")
+        try:
+            channel_name = "#GSP!FruitNinjaand!limited"
+            await first.send(f"JOIN {channel_name}")
+            await first.read_until("End of NAMES list")
+            await second.send(f"JOIN {channel_name}")
+            await second.read_until("End of NAMES list")
+            await first.read_until("player2!player2@")
+
+            with self.assertLogs("fruitspy.peerchat", level="WARNING") as captured:
+                await third.send(f"JOIN {channel_name}")
+                rejection = await third.read_until("Cannot join channel (+l)")
+
+            self.assertIn(f"471 player3 {channel_name}", rejection)
+            channel = self.service.channels[channel_name.casefold()]
+            self.assertEqual(set(channel.users), {"player1", "player2"})
+            self.assertNotIn(channel_name.casefold(), self.service.clients["player3"].channels)
+            output = "\n".join(captured.output)
+            self.assertIn("event=room_join_rejected", output)
+            self.assertIn("reason=participant_limit participants=2 limit=2", output)
+
+            await second.send(f"PART {channel_name} :Leaving")
+            await first.read_until(f"PART {channel_name}")
+            await third.send(f"JOIN {channel_name}")
+            names = await third.read_until("End of NAMES list")
+
+            self.assertIn(f"{channel_name} :@player1 player3", names)
+            self.assertEqual(set(channel.users), {"player1", "player3"})
+        finally:
+            await first.close()
+            await second.close()
+            await third.close()
+
+    async def test_title_room_remains_unbounded_by_staging_limit(self) -> None:
+        clients = [
+            await self.connect_player("player1"),
+            await self.connect_player("player2"),
+            await self.connect_player("player3"),
+        ]
+        try:
+            channel_name = "#GSP!FruitNinjaand"
+            for client in clients:
+                await client.send(f"JOIN {channel_name}")
+                await client.read_until("End of NAMES list")
+
+            channel = self.service.channels[channel_name.casefold()]
+            self.assertIsNone(channel.participant_limit)
+            self.assertEqual(set(channel.users), {"player1", "player2", "player3"})
+        finally:
+            for client in clients:
+                await client.close()
 
 
 if __name__ == "__main__":

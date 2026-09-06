@@ -6,7 +6,7 @@ import secrets
 import string
 from dataclasses import dataclass, field
 
-from .admission import ConnectionAdmission
+from .admission import ConnectionAdmission, TokenBucket
 from .config import ServerConfig
 from .crypto import PeerChatCipher
 
@@ -35,6 +35,7 @@ class ChatChannel:
     client_keys: dict[str, dict[str, str]] = field(default_factory=dict)
     topic: str = ""
     operators: set[str] = field(default_factory=set)
+    participant_limit: int | None = None
 
 
 class PeerChatServer:
@@ -86,7 +87,11 @@ class PeerChatServer:
         folded = name.casefold()
         channel = self.channels.get(folded)
         if channel is None:
-            channel = ChatChannel(name=name)
+            staging_prefix = f"#GSP!{self.config.game.name}!".casefold()
+            channel = ChatChannel(
+                name=name,
+                participant_limit=2 if folded.startswith(staging_prefix) else None,
+            )
             self.channels[folded] = channel
         return channel
 
@@ -108,12 +113,21 @@ class PeerChatClient:
         self.realname = ""
         self.welcomed = False
         self.closed = False
-        self.user_keys: dict[str, str] = {}
+        self.user_keys: dict[str, str] = {"username": ""}
         self.channels: set[str] = set()
         self.decryptor: PeerChatCipher | None = None
         self.encryptor: PeerChatCipher | None = None
         self._plain_buffer = bytearray()
         self.connection_id = secrets.token_hex(8)
+        limits = server.config.limits
+        self.command_budget = TokenBucket(
+            limits.peerchat_commands_per_second,
+            limits.peerchat_command_burst,
+        )
+        self.state_creation_budget = TokenBucket(
+            limits.peerchat_state_creations_per_second,
+            limits.peerchat_state_creation_burst,
+        )
         self._handshake_deadline = (
             asyncio.get_running_loop().time()
             + server.config.timeouts.peerchat_handshake_seconds
@@ -149,6 +163,8 @@ class PeerChatClient:
                 line = raw.rstrip(b"\r").decode("utf-8", "replace")
                 if line:
                     await self.command(line)
+                    if self.closed:
+                        return
             if len(self._plain_buffer) > self.server.config.limits.peerchat_line_bytes:
                 raise ValueError("PeerChat line exceeds configured limit")
 
@@ -172,6 +188,17 @@ class PeerChatClient:
     async def command(self, line: str) -> None:
         command, _, params = line.partition(" ")
         name = command.upper()
+        if not self.command_budget.allow():
+            LOG.warning(
+                "service=peerchat event=client_budget_exhausted connection=%s "
+                "source=%s budget=commands command=%s",
+                self.connection_id,
+                self.host,
+                name,
+            )
+            await self.numeric(263, f"{name} :Command budget exceeded")
+            await self.disconnect("Command budget exceeded")
+            return
         LOG.debug(
             "service=peerchat event=receive connection=%s command=%s bytes=%d",
             self.connection_id,
@@ -207,6 +234,11 @@ class PeerChatClient:
             await self.numeric(433, f"{new_nick} :Nickname is already in use")
             return
         old_nick = self.nick
+        if (
+            old_nick.casefold() != new_nick.casefold()
+            and not await self._consume_state_creation_budget("NICK", 1)
+        ):
+            return
         if old_nick:
             self.server.clients.pop(old_nick.casefold(), None)
         self.nick = new_nick
@@ -263,14 +295,69 @@ class PeerChatClient:
         if not channel_name:
             await self.numeric(461, "JOIN :Not enough parameters")
             return
-        channel = self.server.channel(channel_name)
+        folded_channel = channel_name.casefold()
         folded_nick = self.nick.casefold()
+        channel = self.server.channels.get(folded_channel)
+        is_member = channel is not None and folded_nick in channel.users
+        resource = ""
+        current = 0
+        limit = 0
+        if (
+            not is_member
+            and len(self.channels)
+            >= self.server.config.limits.peerchat_channels_per_client
+        ):
+            resource = "channels_per_client"
+            current = len(self.channels)
+            limit = self.server.config.limits.peerchat_channels_per_client
+        elif (
+            channel is None
+            and len(self.server.channels)
+            >= self.server.config.limits.peerchat_channels
+        ):
+            resource = "channels"
+            current = len(self.server.channels)
+            limit = self.server.config.limits.peerchat_channels
+        if resource:
+            LOG.warning(
+                "service=peerchat event=collection_limit_rejected connection=%s "
+                "source=%s command=JOIN resource=%s current=%d limit=%d",
+                self.connection_id,
+                self.host,
+                resource,
+                current,
+                limit,
+            )
+            await self.numeric(405, f"{channel_name} :You have joined too many channels")
+            return
+        if (
+            channel is not None
+            and not is_member
+            and channel.participant_limit is not None
+            and len(channel.users) >= channel.participant_limit
+        ):
+            LOG.warning(
+                "service=peerchat event=room_join_rejected connection=%s "
+                "source=%s channel=%s reason=participant_limit "
+                "participants=%d limit=%d",
+                self.connection_id,
+                self.host,
+                channel.name,
+                len(channel.users),
+                channel.participant_limit,
+            )
+            await self.numeric(471, f"{channel.name} :Cannot join channel (+l)")
+            return
+        creation_cost = 0 if is_member else 1 + int(channel is None)
+        if not await self._consume_state_creation_budget("JOIN", creation_cost):
+            return
+        if channel is None:
+            channel = self.server.channel(channel_name)
         first = not channel.users
         channel.users[folded_nick] = self
         channel.client_keys.setdefault(folded_nick, {})
         if first:
             channel.operators.add(folded_nick)
-        folded_channel = channel.name.casefold()
         self.channels.add(folded_channel)
         await self._broadcast(channel, f":{self.prefix} JOIN :{channel.name}")
         if first:
@@ -352,7 +439,12 @@ class PeerChatClient:
 
     async def cmd_setkey(self, params: str) -> None:
         _, _, value = params.partition(":")
-        self.user_keys.update(_key_pairs(value))
+        await self._update_key_collection(
+            self.user_keys,
+            _key_pairs(value),
+            "SETKEY",
+            "user_keys",
+        )
 
     async def cmd_getkey(self, params: str) -> None:
         before, _, query = params.partition(":")
@@ -372,7 +464,12 @@ class PeerChatClient:
         channel_name, _, value = params.partition(":")
         channel = self.server.channels.get(channel_name.strip().casefold())
         if channel is not None:
-            channel.keys.update(_key_pairs(value))
+            await self._update_key_collection(
+                channel.keys,
+                _key_pairs(value),
+                "SETCHANKEY",
+                "channel_keys",
+            )
 
     async def cmd_getchankey(self, params: str) -> None:
         before, _, query = params.partition(":")
@@ -397,13 +494,20 @@ class PeerChatClient:
             return
         channel = self.server.channels.get(fields[0].casefold())
         target = self.server.clients.get(fields[1].casefold())
-        if channel is None or target is None:
+        target_name = target.nick.casefold() if target is not None else ""
+        if channel is None or target is None or target_name not in channel.users:
             return
-        channel.client_keys.setdefault(target.nick.casefold(), {}).update(_key_pairs(value))
-        await self._broadcast(
-            channel,
-            f":s 702 {channel.name} {channel.name} {target.nick} BCAST :{value}",
+        updated = await self._update_key_collection(
+            channel.client_keys.setdefault(target_name, {}),
+            _key_pairs(value),
+            "SETCKEY",
+            "client_keys",
         )
+        if updated:
+            await self._broadcast(
+                channel,
+                f":s 702 {channel.name} {channel.name} {target.nick} BCAST :{value}",
+            )
 
     async def cmd_getckey(self, params: str) -> None:
         before, _, query = params.partition(":")
@@ -448,6 +552,17 @@ class PeerChatClient:
             if len(fields) >= 3 and fields[1] in {"+o", "-o"}:
                 operator = fields[2].casefold()
                 if fields[1] == "+o":
+                    if operator not in channel.users:
+                        await self.numeric(
+                            441,
+                            f"{fields[2]} {channel.name} :They aren't on that channel",
+                        )
+                        return
+                    if (
+                        operator not in channel.operators
+                        and not await self._consume_state_creation_budget("MODE", 1)
+                    ):
+                        return
                     channel.operators.add(operator)
                 else:
                     channel.operators.discard(operator)
@@ -473,6 +588,54 @@ class PeerChatClient:
     async def cmd_quit(self, params: str) -> None:
         await self.disconnect(params.lstrip(":") or "Client exited")
 
+    async def _consume_state_creation_budget(
+        self,
+        command: str,
+        cost: int,
+    ) -> bool:
+        if cost == 0 or self.state_creation_budget.allow(cost):
+            return True
+        LOG.warning(
+            "service=peerchat event=client_budget_exhausted connection=%s "
+            "source=%s budget=state_creation command=%s cost=%d",
+            self.connection_id,
+            self.host,
+            command,
+            cost,
+        )
+        await self.numeric(263, f"{command} :State creation budget exceeded")
+        return False
+
+
+    async def _update_key_collection(
+        self,
+        collection: dict[str, str],
+        updates: dict[str, str],
+        command: str,
+        resource: str,
+    ) -> bool:
+        requested_new = sum(key not in collection for key in updates)
+        limit = self.server.config.limits.peerchat_keys_per_collection
+        if len(collection) + requested_new > limit:
+            LOG.warning(
+                "service=peerchat event=collection_limit_rejected connection=%s "
+                "source=%s command=%s resource=%s current=%d "
+                "requested_new=%d limit=%d",
+                self.connection_id,
+                self.host,
+                command,
+                resource,
+                len(collection),
+                requested_new,
+                limit,
+            )
+            await self.numeric(263, f"{command} :Resource limit exceeded")
+            return False
+        if not await self._consume_state_creation_budget(command, requested_new):
+            return False
+        collection.update(updates)
+        return True
+
     async def _broadcast(
         self,
         channel: ChatChannel,
@@ -480,8 +643,12 @@ class PeerChatClient:
         exclude: "PeerChatClient | None" = None,
     ) -> None:
         for client in list(channel.users.values()):
-            if client is not exclude:
+            if client is exclude:
+                continue
+            try:
                 await client.send(line)
+            except ConnectionError:
+                continue
 
     async def disconnect(self, reason: str) -> None:
         if self.closed:
@@ -491,9 +658,11 @@ class PeerChatClient:
             channel = self.server.channels.get(channel_name)
             if channel is None:
                 continue
-            for client in list(channel.users.values()):
-                if client is not self:
-                    await client.send(f":{self.prefix} QUIT :{reason}")
+            await self._broadcast(
+                channel,
+                f":{self.prefix} QUIT :{reason}",
+                exclude=self,
+            )
             channel.users.pop(self.nick.casefold(), None)
             channel.client_keys.pop(self.nick.casefold(), None)
             channel.operators.discard(self.nick.casefold())
