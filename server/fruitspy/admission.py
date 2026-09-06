@@ -47,6 +47,22 @@ class UdpAdmissionDecision(Enum):
     SOURCE_TABLE_FULL = "source_table_full"
 
 
+def udp_response_within_amplification_limit(
+    request_bytes: int,
+    response_bytes: int,
+    *,
+    numerator: int,
+    denominator: int = 1,
+) -> bool:
+    return (
+        request_bytes > 0
+        and response_bytes >= 0
+        and numerator > 0
+        and denominator > 0
+        and response_bytes * denominator <= request_bytes * numerator
+    )
+
+
 @dataclass(slots=True)
 class _UdpSource:
     bucket: TokenBucket

@@ -11,6 +11,7 @@ from .admission import (
     UdpAdmission,
     UdpAdmissionDecision,
     create_udp_admission,
+    udp_response_within_amplification_limit,
 )
 from .config import ServerConfig
 from .log_fields import sanitize_log_field
@@ -31,6 +32,8 @@ NN_REPORT = 13
 NN_REPORT_ACK = 14
 NN_PREINIT = 15
 NN_PREINIT_ACK = 16
+NATNEG_AMPLIFICATION_LIMIT = 3
+NATNEG_MIN_INIT_BYTES = 21
 
 REPORT_RESULTS = ("failure", "success")
 NAT_TYPES = (
@@ -196,7 +199,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                     bool(use_game_port),
                     local_endpoint,
                 )
-                return [(self._with_type(data, NN_INIT_ACK), addr)]
+                return self._bounded_responses(
+                    data,
+                    [(self._with_type(data, NN_INIT_ACK), addr)],
+                    addr,
+                )
             # A stock INIT proves only cookie and index knowledge. Preserve the first
             # accepted endpoint for each index; conflicting claims must not mutate it.
             try:
@@ -228,6 +235,7 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 local_endpoint,
             )
             responses = [(self._with_type(data, NN_INIT_ACK), addr)]
+            schedule_fallback = False
             if 0 in session.peers and 1 in session.peers:
                 for index, peer in session.peers.items():
                     other = session.peers[1 - index]
@@ -236,12 +244,15 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                     )
                 if session.paired_at is None:
                     session.paired_at = time.monotonic()
+                    schedule_fallback = True
                     LOG.info(
                         "service=natneg event=peers_paired session=%s peers=%s",
                         cookie.hex(),
                         [peer.address for peer in session.peers.values()],
                     )
-                    self._schedule_fallback(cookie)
+            responses = self._bounded_responses(data, responses, addr)
+            if responses and schedule_fallback:
+                self._schedule_fallback(cookie)
             return responses
         if packet_type == NN_ADDRESS_CHECK:
             LOG.debug(
@@ -254,14 +265,18 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 reply.extend(b"\x00" * (21 - len(reply)))
             reply[15:19] = socket.inet_aton(addr[0])
             reply[19:21] = struct.pack(">H", addr[1])
-            return [(bytes(reply), addr)]
+            return self._bounded_responses(data, [(bytes(reply), addr)], addr)
         if packet_type == NN_NATIFY_REQUEST:
             LOG.debug(
                 "service=natneg event=natify_request session=%s source=%s",
                 cookie.hex(),
                 addr,
             )
-            return [(self._with_type(data, NN_ERT_TEST), addr)]
+            return self._bounded_responses(
+                data,
+                [(self._with_type(data, NN_ERT_TEST), addr)],
+                addr,
+            )
         if packet_type == NN_REPORT:
             if len(data) < 23:
                 raise ValueError("short NatNeg report")
@@ -287,7 +302,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 mapping_scheme,
             )
             self._record_report(cookie, client_index, bool(result), addr)
-            return [(self._with_type(data, NN_REPORT_ACK), addr)]
+            return self._bounded_responses(
+                data,
+                [(self._with_type(data, NN_REPORT_ACK), addr)],
+                addr,
+            )
         if packet_type == NN_PREINIT:
             LOG.debug(
                 "service=natneg event=preinit session=%s source=%s",
@@ -297,7 +316,7 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             reply = bytearray(self._with_type(data, NN_PREINIT_ACK))
             if len(reply) > 13:
                 reply[13] = 2
-            return [(bytes(reply), addr)]
+            return self._bounded_responses(data, [(bytes(reply), addr)], addr)
         if packet_type == NN_CONNECT_ACK:
             LOG.debug(
                 "service=natneg event=connect_ack session=%s source=%s",
@@ -305,6 +324,28 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 addr,
             )
             return []
+        return []
+
+    @staticmethod
+    def _bounded_responses(
+        request: bytes,
+        responses: list[tuple[bytes, Address]],
+        source: Address,
+    ) -> list[tuple[bytes, Address]]:
+        response_bytes = sum(len(response) for response, _ in responses)
+        if udp_response_within_amplification_limit(
+            len(request),
+            response_bytes,
+            numerator=NATNEG_AMPLIFICATION_LIMIT,
+        ):
+            return responses
+        LOG.warning(
+            "service=natneg event=response_suppressed source=%s "
+            "request_bytes=%d response_bytes=%d limit=3",
+            source,
+            len(request),
+            response_bytes,
+        )
         return []
 
     def _schedule_fallback(self, cookie: bytes) -> None:
@@ -417,6 +458,29 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 cookie.hex(),
             )
             return
+        relay_pings: dict[int, bytes] = {}
+        for index, peer in session.peers.items():
+            other = session.peers[1 - index]
+            relay_ping = self._relay_ping_packet(peer.version, cookie)
+            cumulative_response_bytes = (
+                NATNEG_MIN_INIT_BYTES
+                + len(self._connect_packet(peer.version, cookie, other.address))
+                + len(relay_ping)
+            )
+            if not udp_response_within_amplification_limit(
+                NATNEG_MIN_INIT_BYTES,
+                cumulative_response_bytes,
+                numerator=NATNEG_AMPLIFICATION_LIMIT,
+            ):
+                LOG.warning(
+                    "service=natneg event=response_suppressed destination=%s "
+                    "request_bytes=%d response_bytes=%d limit=3 phase=relay_fallback",
+                    peer.address,
+                    NATNEG_MIN_INIT_BYTES,
+                    cumulative_response_bytes,
+                )
+                return
+            relay_pings[index] = relay_ping
         replaced = {
             binding[0]
             for address in addresses
@@ -447,11 +511,7 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         )
         for index, endpoint in relay.endpoints.items():
             self._relay_by_address[endpoint.address] = (cookie, index)
-            version = session.peers[index].version
-            self.transport.sendto(
-                self._relay_ping_packet(version, cookie),
-                endpoint.address,
-            )
+            self.transport.sendto(relay_pings[index], endpoint.address)
         paired_at = session.paired_at if session.paired_at is not None else now
         LOG.info(
             "service=natneg event=relay_activated session=%s fallback_ms=%d "

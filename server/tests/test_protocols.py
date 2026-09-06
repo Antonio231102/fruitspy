@@ -1,14 +1,23 @@
 import socket
 import struct
 import unittest
+from unittest import mock
 
-from fruitspy.availability_qr import AvailabilityQRProtocol
+from fruitspy.availability_qr import (
+    QR_AMPLIFICATION_DENOMINATOR,
+    QR_AMPLIFICATION_NUMERATOR,
+    AvailabilityQRProtocol,
+)
 from fruitspy.crypto import EnctypeX, gsseckey
 from fruitspy.natneg import (
     MAGIC,
+    NATNEG_AMPLIFICATION_LIMIT,
+    NN_ADDRESS_CHECK,
     NN_CONNECT,
     NN_INIT,
     NN_INIT_ACK,
+    NN_NATIFY_REQUEST,
+    NN_PREINIT,
     NN_REPORT,
     NN_REPORT_ACK,
     NatNegProtocol,
@@ -109,6 +118,65 @@ class AvailabilityQRTests(unittest.TestCase):
         packet = b"\x09" + b"x" * self.config.limits.qr_packet_bytes
         with self.assertRaisesRegex(ValueError, "exceeds configured limit"):
             self.protocol.handle_datagram(packet, ("10.0.0.10", 30123))
+
+    def test_all_qr_responses_stay_within_two_to_one_limit(self) -> None:
+        source = ("10.0.0.10", 30123)
+        requests = [
+            b"\x09\x00\x00\x00\x00\x00",
+            b"\x09\x00\x00\x00\x00FruitNinjaand\x00",
+            b"\x08ABCD",
+            b"\x03ABCDgamename\x00FruitNinjaand\x00",
+        ]
+        responses = [
+            self.protocol.handle_datagram(request, source)
+            for request in requests
+        ]
+        challenge = responses[-1]
+        assert challenge is not None
+        proof = gsseckey(
+            challenge[7:-1].decode("ascii"),
+            self.config.game.secret_key,
+        )
+        challenge_request = b"\x01ABCD" + proof.encode("ascii") + b"\x00"
+        requests.append(challenge_request)
+        responses.append(self.protocol.handle_datagram(challenge_request, source))
+
+        measurements = [
+            (len(request), len(response))
+            for request, response in zip(requests, responses, strict=True)
+            if response is not None
+        ]
+        self.assertEqual(
+            measurements,
+            [(6, 11), (19, 11), (5, 7), (28, 28), (34, 7)],
+        )
+        for request_bytes, response_bytes in measurements:
+            self.assertLessEqual(
+                response_bytes * QR_AMPLIFICATION_DENOMINATOR,
+                request_bytes * QR_AMPLIFICATION_NUMERATOR,
+            )
+
+    def test_qr_response_above_amplification_limit_is_suppressed(self) -> None:
+        class OversizedHeartbeatProtocol(AvailabilityQRProtocol):
+            def _heartbeat(
+                self,
+                data: bytes,
+                addr: tuple[str, int],
+            ) -> bytes:
+                return b"x" * 15
+
+        protocol = OversizedHeartbeatProtocol(self.config, self.state)
+        with self.assertLogs("fruitspy.availability_qr", level="WARNING") as captured:
+            response = protocol.handle_datagram(
+                b"\x03ABCD\x00\x00",
+                ("10.0.0.10", 30123),
+            )
+
+        self.assertIsNone(response)
+        self.assertIn(
+            "event=response_suppressed",
+            "\n".join(captured.output),
+        )
 
 
 class ServerBrowserTests(unittest.TestCase):
@@ -237,6 +305,99 @@ class NatNegTests(unittest.TestCase):
         self.assertEqual(struct.unpack(">H", by_destination[first_addr][16:18])[0], second_addr[1])
         self.assertEqual(by_destination[second_addr][12:16], socket.inet_aton(first_addr[0]))
 
+
+    def test_all_natneg_responses_stay_within_three_to_one_limit(self) -> None:
+        protocol = NatNegProtocol(test_config(), ServerState(120, 60))
+        cookie = b"AMPN"
+        first_addr = ("10.0.0.10", 40000)
+        second_addr = ("10.0.0.20", 40001)
+        cases = [
+            (natneg_init(cookie, 0), first_addr),
+            (natneg_init(cookie, 1), second_addr),
+            (
+                MAGIC + bytes((3, NN_ADDRESS_CHECK)) + b"ADDR",
+                ("10.0.0.30", 40002),
+            ),
+            (
+                MAGIC + bytes((3, NN_NATIFY_REQUEST)) + b"NTFY",
+                ("10.0.0.30", 40002),
+            ),
+            (
+                MAGIC + bytes((3, NN_PREINIT)) + b"PREI",
+                ("10.0.0.30", 40002),
+            ),
+            (
+                MAGIC
+                + bytes((3, NN_REPORT))
+                + cookie
+                + bytes((0, 1, 0))
+                + b"\x00" * 8,
+                second_addr,
+            ),
+        ]
+
+        measurements = []
+        for request, source in cases:
+            responses = protocol.handle_datagram(request, source)
+            measurements.append(
+                (
+                    len(request),
+                    sum(len(response) for response, _ in responses),
+                )
+            )
+
+        self.assertEqual(
+            measurements,
+            [(21, 21), (21, 61), (12, 21), (12, 12), (12, 12), (23, 23)],
+        )
+        for request_bytes, response_bytes in measurements:
+            self.assertLessEqual(
+                response_bytes,
+                request_bytes * NATNEG_AMPLIFICATION_LIMIT,
+            )
+
+    def test_natneg_suppresses_immediate_and_delayed_over_amplification(
+        self,
+    ) -> None:
+        protocol = NatNegProtocol(test_config(), ServerState(120, 60))
+        cookie = b"CAPS"
+        protocol.handle_datagram(
+            natneg_init(cookie, 0),
+            ("10.0.0.10", 40000),
+        )
+
+        with (
+            mock.patch.object(
+                NatNegProtocol,
+                "_connect_packet",
+                return_value=b"x" * 22,
+            ),
+            self.assertLogs("fruitspy.natneg", level="WARNING") as captured,
+        ):
+            responses = protocol.handle_datagram(
+                natneg_init(cookie, 1),
+                ("10.0.0.20", 40001),
+            )
+
+        self.assertEqual(responses, [])
+        self.assertEqual(protocol._fallbacks, {})
+        self.assertIn("event=response_suppressed", "\n".join(captured.output))
+
+        transport = mock.Mock()
+        protocol.transport = transport
+        with (
+            mock.patch.object(
+                NatNegProtocol,
+                "_relay_ping_packet",
+                return_value=b"x" * 23,
+            ),
+            self.assertLogs("fruitspy.natneg", level="WARNING") as captured,
+        ):
+            protocol._activate_relay(cookie)
+
+        self.assertEqual(protocol._relays, {})
+        transport.sendto.assert_not_called()
+        self.assertIn("phase=relay_fallback", "\n".join(captured.output))
 
     def test_pairing_emits_structured_lifecycle_events(self) -> None:
         protocol = NatNegProtocol(test_config(), ServerState(120, 60))

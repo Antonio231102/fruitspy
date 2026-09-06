@@ -10,6 +10,7 @@ from .admission import (
     UdpAdmission,
     UdpAdmissionDecision,
     create_udp_admission,
+    udp_response_within_amplification_limit,
 )
 from .config import ServerConfig
 from .crypto import gsseckey
@@ -23,6 +24,8 @@ PACKET_HEARTBEAT = 0x03
 PACKET_KEEPALIVE = 0x08
 PACKET_AVAILABLE = 0x09
 PACKET_CLIENT_REGISTERED = 0x0A
+QR_AMPLIFICATION_NUMERATOR = 2
+QR_AMPLIFICATION_DENOMINATOR = 1
 
 
 def availability_response(status: int = 0) -> bytes:
@@ -105,15 +108,45 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
                 addr,
                 status == 0,
             )
-            return availability_response(status)
+            return self._bounded_response(data, availability_response(status), addr)
         if packet_type == PACKET_HEARTBEAT:
-            return self._heartbeat(data, addr)
+            return self._bounded_response(data, self._heartbeat(data, addr), addr)
         if packet_type == PACKET_CHALLENGE:
-            return self._challenge_response(data, addr)
+            return self._bounded_response(
+                data,
+                self._challenge_response(data, addr),
+                addr,
+            )
         if packet_type == PACKET_KEEPALIVE:
             if len(data) < 5:
                 raise ValueError("short keepalive packet")
-            return QR_MAGIC + bytes((PACKET_KEEPALIVE,)) + data[1:5]
+            return self._bounded_response(
+                data,
+                QR_MAGIC + bytes((PACKET_KEEPALIVE,)) + data[1:5],
+                addr,
+            )
+        return None
+
+    @staticmethod
+    def _bounded_response(
+        request: bytes,
+        response: bytes | None,
+        addr: Address,
+    ) -> bytes | None:
+        if response is None or udp_response_within_amplification_limit(
+            len(request),
+            len(response),
+            numerator=QR_AMPLIFICATION_NUMERATOR,
+            denominator=QR_AMPLIFICATION_DENOMINATOR,
+        ):
+            return response
+        LOG.warning(
+            "service=qr event=response_suppressed source=%s "
+            "request_bytes=%d response_bytes=%d limit=2",
+            addr,
+            len(request),
+            len(response),
+        )
         return None
 
     def _heartbeat(self, data: bytes, addr: Address) -> bytes | None:
