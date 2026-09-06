@@ -49,6 +49,7 @@ The direct-first service and bounded relay fallback are deployed:
 - Added automatic fallback on the existing UDP 27901 listener. A synthetic NatNeg peer response moves only unconfirmed sessions to an opaque two-endpoint relay after three seconds.
 - Bounded relay allocations by hard TTL, packet size, per-endpoint byte rate and burst, global session count, exact endpoint admission, and NatNeg endpoint proof.
 - Completed two consecutive Wi-Fi/cellular games plus a reverse-host game through the relay. Re-ran LAN gameplay under the same `auto` policy; both direct reports arrived within 27 ms and no relay was allocated.
+- Implemented GameSpy `PUSH_UPDATES` delivery for newly registered and changed QR2 hosts. Automatch now publishes the oldest compatible open host, preventing clients that searched an empty list simultaneously from both remaining hosts or cross-joining newly created rooms. The regression passed 20 repeated runs plus host-full rotation, host removal, and recovery checks. Through the public VPS, a synthetic same-egress two-browser/two-QR probe and three real-device games passed: simultaneous entry, Galaxy S4 first, and Galaxy S20 first.
 
 Next: retain the direct and relay acceptance matrix while beginning Phase 4 public-service hardening.
 
@@ -111,43 +112,82 @@ Exit criteria:
 - Loss of relay state ends only the affected match and cannot corrupt other sessions.
 - Direct-connect sessions never allocate relay state unless relay fallback is explicitly configured.
 
-## Phase 4 — Public-service hardening
+## Phase 4 — Correctness and public-service hardening
 
-Purpose: operate an anonymous legacy protocol safely enough for a limited public release.
+Purpose: close the known matchmaking and abuse-resistance gaps before inviting anonymous public traffic.
 
-- Threat-model nickname abuse, room flooding, oversized frames, spoofed UDP, NatNeg cookie collisions, amplification, resource exhaustion, and log injection.
-- Bound all in-memory collections and make expiry work independent of new client traffic.
-- Add deterministic nickname-collision handling and enforce the two-player room limit server-side.
-- Add temporary source bans and configurable global admission limits. Avoid permanent accounts until real abuse data demonstrates a need.
-- Add privacy-preserving operational metrics: active clients, rooms, discovery requests, NatNeg outcomes, relay outcomes, latency, and error counts.
-- Add graceful shutdown and drain behavior so new matchmaking stops while active direct games remain unaffected.
-- Exercise restart, packet loss, duplicate UDP packets, delayed packets, abrupt client death, and reconnect behavior.
+### Matchmaking correctness
+
+- [x] Correct the simultaneous empty-list automatch race with live Server Browser push updates and deterministic oldest-open-host publication. The shared public IP was the observed topology, not the identity collision.
+- [x] Add an integration scenario with two QR2 registrations sharing a public IP but using distinct observed ports, private addresses, and local ports.
+- [x] Complete same-egress real-device games in both hosting directions through the public VPS.
+- [x] Define and test NatNeg behavior for cookie collisions, duplicate peer indexes, spoofed initialization, and third-peer injection. Active cookies now use first-claim-wins endpoint ownership: exact duplicate INITs refresh the claim; conflicting occupied indexes, one endpoint claiming both indexes, and third endpoints after pairing or relay activation are rejected without a reply or state mutation; expired cookies can be reclaimed.
+  Protocol boundary: before both indexes are claimed, an endpoint presenting the cookie for the still-open index is indistinguishable from the intended peer because the stock INIT carries no stronger identity proof. The server therefore preserves the first accepted claim for each index rather than claiming authentication the wire format cannot provide.
+- [x] Test direct-success reports that race the three-second automatic relay boundary. The first definitive server-observed outcome wins: direct success before any relay endpoint returns its cookie-bearing ping closes the speculative relay, while a returned relay ping commits subsequent success reports to the relay. Deterministic tests cover reports before fallback activation, immediately after activation, and after relay readiness.
+
+### State and abuse resistance
+
+- [x] Reject duplicate PeerChat nicknames deterministically.
+- [x] Enforce the two-player staging-room limit server-side. A third unique participant receives IRC numeric `471`, does not enter channel state, and may join after a participant leaves; title rooms remain unrestricted by this game-specific limit.
+- [x] Bound channels per client, total channels, and all channel/client/user key collections. Defaults cap live channels at 1024, memberships at 16 per client, and each key dictionary at 64 entries; rejected multi-key updates are atomic, per-channel client-key and operator maps cannot grow beyond actual membership, and released channels restore capacity.
+- [x] Add per-client command and state-creation budgets so one admitted connection cannot exhaust memory. Token buckets default to 30 commands/second with a 60-command burst and 8 state creations/second with a 32-entry burst; command exhaustion disconnects before buffered commands continue, while state exhaustion atomically rejects new nick, channel, membership, operator, or key entries without blocking updates to existing state.
+- [x] Make reported-server and NatNeg expiry run independently of new client traffic. A supervised five-second state sweeper removes expired QR2 and NatNeg setup entries, emits aggregate expiry diagnostics, and notifies Server Browser subscribers when registered hosts disappear. Authenticated relay activity refreshes retained NatNeg setup state, while expiry of an inactive setup record does not terminate its independently bounded relay.
+- [ ] Add configurable global UDP admission budgets and temporary source bans.
+- [ ] Confirm or remove unconditional `CDKEY` acceptance and document the intended anonymous authentication boundary.
+- [ ] Sanitize externally controlled log fields against control-character and log-injection attacks.
+- [ ] Measure QR2 and NatNeg amplification and cap any unsafe response ratios.
+
+### Operations and failure testing
+
+- [ ] Add privacy-preserving metrics for active clients, rooms, discovery, NatNeg outcomes, relay outcomes, latency, errors, and admission rejection.
+- [ ] Add graceful drain behavior: stop new matchmaking while allowing existing direct games to continue and reporting relay shutdown explicitly.
+- [ ] Fuzz QR2, NatNeg, Server Browser, encrypted PeerChat, and filter inputs.
+- [ ] Run concurrent connection, room, packet, and relay load tests to the configured capacity limits.
+- [ ] Exercise packet loss, reordering, duplicates, delay, abrupt client death, reconnect, process restart, and isolated relay-state loss.
+- [ ] Verify that the 15-minute hard relay TTL cannot terminate a legitimate supported game.
+- [ ] Complete the remaining network matrix: two residential NATs and mixed local/remote home hosting. Additional NAT types remain opportunistic after those cases pass.
 
 Exit criteria:
 
-- Resource use remains bounded under the documented load envelope.
-- Fuzzed protocol inputs do not crash listeners or leak state across sessions.
-- Operators can distinguish discovery, negotiation, relay, and client-side failures from metrics and logs.
+- [x] Same-egress clients complete games in both hosting directions.
+- [ ] Resource use remains bounded under the documented load envelope.
+- [ ] Fuzzed and spoofed inputs do not crash listeners, cross-wire peers, or leak state across sessions.
+- [ ] Operators can distinguish discovery, negotiation, direct-connect, relay, and client-side failures from metrics and logs.
 
-## Phase 5 — Packaging and public release
+## Phase 5 — Deterministic client patching and public release
 
-Purpose: publish a maintainable preservation project without redistributing proprietary material.
+Purpose: publish a reproducible preservation project without redistributing proprietary material or coupling users to the development VPS.
 
-- Choose and add a project license; do not assume a license without owner approval.
-- Publish source, tests, protocol notes, and the deterministic patcher only.
-- Never publish Fruit Ninja APKs, extracted native libraries, signing keystores, signing passwords, or copyrighted game assets.
-- Replace development signing metadata with instructions for users to create and protect their own key.
-- Add a security policy, responsible-disclosure contact, contribution guidelines, and a supported-version statement.
-- Document that the legacy game protocol does not provide modern transport security and that the service should collect minimal data.
-- Tag the current LAN checkpoint, then issue versioned online alpha releases with checksums and migration notes.
-- Perform a final legal and trademark review before changing the GitHub repository from private to public.
+### Unified client patch pipeline
+
+- [ ] Replace the endpoint-patcher/clock-patcher chain with one deterministic pipeline that starts from an allowlisted Fruit Ninja 1.7.6 APK hash.
+- [ ] Apply the configurable FruitSpy endpoint and monotonic clock correction in a defined order within that pipeline.
+- [ ] Ensure every retained ABI receives both required transformations; either implement the endpoint patch for `armeabi` or explicitly remove that ABI from the supported contract.
+- [ ] Reject unsupported or modified whole APKs before writing output, not only unexpected native-library bytes.
+- [ ] Produce an unsigned APK and machine-readable manifest containing input, output, per-library, payload, and tool-version hashes.
+- [ ] Keep signing separate and document alignment plus signing with a user-owned key.
+- [ ] Consume the compatibility project as source/tooling; never copy its APK inputs, APK outputs, or extracted proprietary libraries into this repository.
+- [ ] Add automated composition tests for IPv4 and short-DNS endpoint targets across every supported ABI.
+
+### Repository and release hygiene
+
+- [ ] Replace `server/apk-patch-map.json` and `server/apk-patch-report.json` with host-neutral reproducible fixtures or remove generated operator output from version control.
+- [ ] Choose and add a project license; do not assume a license without owner approval.
+- [ ] Publish source, tests, protocol notes, and deterministic patch tooling only.
+- [ ] Never publish Fruit Ninja APKs, extracted native libraries, signing keystores, signing passwords, packet captures, or copyrighted game assets.
+- [ ] Add a security policy, responsible-disclosure contact, contribution guidelines, and a supported-version/topology statement.
+- [ ] Document the legacy protocol's lack of modern transport security, operational IP logging, retention policy, and data-minimization controls.
+- [ ] Run full Git-history secret/proprietary-artifact scanning and dependency review.
+- [ ] Correct all status documents and manifests to match the release candidate.
+- [ ] Push the deployed local commits, tag the accepted checkpoint, and publish versioned alpha checksums and migration notes.
+- [ ] Complete legal and trademark review before changing repository visibility.
 
 Exit criteria:
 
-- A release can be reproduced from public source plus a user-supplied lawful APK.
-- Secret scanning and dependency review are clean.
-- LAN and Internet smoke matrices pass against the release candidate.
-- Repository visibility changes only after the owner approves the license and release review.
+- [ ] A clean checkout reproduces the patch from a user-supplied lawful APK without using a project-owned signing key.
+- [ ] Secret scanning, dependency review, and legal review are accepted.
+- [ ] Automated tests plus LAN, same-egress, and independent-network smoke matrices pass against the exact release candidate.
+- [ ] Repository visibility changes only after the owner approves the license and release review.
 
 ## Deferred capabilities
 

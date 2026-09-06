@@ -61,6 +61,13 @@ The unified configuration includes the checked-in safety limits; operators shoul
 | Setting | Default | Behavior |
 | --- | ---: | --- |
 | `peerchat_connections` | 256 | Maximum concurrent PeerChat TCP connections |
+| `peerchat_channels` | 1024 | Maximum live PeerChat channel objects |
+| `peerchat_channels_per_client` | 16 | Maximum simultaneous channel memberships per PeerChat client |
+| `peerchat_keys_per_collection` | 64 | Maximum entries in each user, channel, or per-participant channel-key collection |
+| `peerchat_commands_per_second` | 30 | Per-client PeerChat command-token refill rate |
+| `peerchat_command_burst` | 60 | Maximum per-client command burst before disconnect |
+| `peerchat_state_creations_per_second` | 8 | Per-client refill rate for new nick, room, membership, operator, and key state |
+| `peerchat_state_creation_burst` | 32 | Maximum per-client burst of new persistent state |
 | `server_browser_connections` | 128 | Maximum concurrent Server Browser TCP connections |
 | `connections_per_source` | 16 | Per-source cap, enforced independently by each TCP service |
 | `udp_packets_per_second` | 120 | QR2 and NatNeg token refill rate per source IPv4 address |
@@ -76,10 +83,17 @@ The unified configuration includes the checked-in safety limits; operators shoul
 | `relay.byte_burst` | 524288 | Per-endpoint initial and maximum byte burst |
 | `relay.sessions` | 1024 | Global concurrent relay allocation limit |
 | `peerchat_handshake_seconds` | 15 | Absolute deadline for PeerChat registration |
+| `state_expiry_interval_seconds` | 5 | Background cadence for reported-server and NatNeg session expiry |
 | `server_browser_idle_seconds` | 30 | Header and frame completion deadline |
 | `rate_limit_entry_seconds` | 120 | Idle lifetime for UDP source accounting |
 
 Rejected connections and protocol events use stable `service=... event=...` fields. Verbose logs omit PeerChat message bodies, nicknames, quit reasons, and raw Server Browser frames. Source addresses remain available for abuse diagnosis and should be retained only as long as operationally necessary.
+
+Channel-limit rejections return IRC numeric `405`; key updates that would exceed a collection return numeric `263` and apply no partial changes. Existing keys remain updateable at capacity. Structured `collection_limit_rejected` events identify the bounded resource without logging key contents.
+
+Command-budget exhaustion returns numeric `263` and disconnects the offending PeerChat client before additional buffered commands can run. State-creation exhaustion returns `263` without disconnecting; the rejected command makes no partial change, while updates to existing state remain available.
+
+The state sweeper removes expired QR2 registrations and NatNeg setup sessions on the configured cadence even when no client request arrives. Expired registered hosts trigger normal Server Browser deletion updates. Authenticated relay traffic refreshes its NatNeg setup session when present, while the relay allocation retains its independent activity and hard-TTL lifecycle.
 
 ## Patch a locally owned APK
 
