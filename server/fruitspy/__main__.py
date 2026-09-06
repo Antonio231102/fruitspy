@@ -57,10 +57,14 @@ async def run_server(config: ServerConfig) -> None:
     )
 
     try:
-        await asyncio.gather(
-            peerchat_listener.serve_forever(),
-            browser_listener.serve_forever(),
-        )
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(peerchat_listener.serve_forever())
+            tasks.create_task(browser_listener.serve_forever())
+            tasks.create_task(
+                state.expire_periodically(
+                    config.timeouts.state_expiry_interval_seconds,
+                )
+            )
     finally:
         peerchat_listener.close()
         browser_listener.close()
