@@ -5,7 +5,7 @@ import unittest
 from dataclasses import replace
 
 from fruitspy.availability_qr import AvailabilityQRProtocol
-from fruitspy.crypto import gsseckey
+from fruitspy.crypto import EnctypeX, gsseckey
 from fruitspy.natneg import (
     MAGIC,
     NN_CONNECT,
@@ -19,7 +19,11 @@ from fruitspy.natneg import (
     NatNegProtocol,
 )
 from fruitspy.peerchat import PeerChatServer
-from fruitspy.server_browser import ServerBrowserServer
+from fruitspy.server_browser import (
+    DELETE_SERVER_MESSAGE,
+    PUSH_SERVER_MESSAGE,
+    ServerBrowserServer,
+)
 from fruitspy.state import ServerState
 from tests.helpers import test_config
 from tests.test_peerchat import EncryptedPeerClient
@@ -99,6 +103,17 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
             )
             if len(packet) > 7 and packet[7] == packet_type:
                 return packet
+
+    async def read_browser_frame(
+        self,
+        reader: asyncio.StreamReader,
+        cipher: EnctypeX,
+    ) -> bytes:
+        encrypted_header = await asyncio.wait_for(reader.readexactly(2), 2)
+        header = cipher.decrypt(encrypted_header)
+        size = struct.unpack(">H", header)[0]
+        encrypted_payload = await asyncio.wait_for(reader.readexactly(size - 2), 2)
+        return header + cipher.decrypt(encrypted_payload)
 
     async def pair_nat_clients(self, cookie: bytes) -> tuple[socket.socket, socket.socket]:
         first = self.udp_socket()
@@ -207,6 +222,101 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(first_connect[7], NN_CONNECT)
         self.assertIn(NN_CONNECT, [packet[7] for packet in second_packets])
 
+    async def test_push_updates_break_simultaneous_same_egress_host_race(self) -> None:
+        browsers = []
+        for challenge in (b"SAMEIPA1", b"SAMEIPB2"):
+            reader, writer = await asyncio.open_connection(
+                "127.0.0.1",
+                self.browser_port,
+            )
+            writer.write(
+                server_browser_request(
+                    challenge,
+                    "",
+                    options=4,
+                    query_game="FruitNinjaandam",
+                )
+            )
+            await writer.drain()
+            encrypted_list = await asyncio.wait_for(reader.read(4096), 2)
+            initial_list, cipher = decrypt_server_browser_stream(
+                encrypted_list,
+                challenge,
+            )
+            self.assertTrue(initial_list.endswith(b"\x00\xff\xff\xff\xff"))
+            self.assertEqual(initial_list[8:], b"\x00\xff\xff\xff\xff")
+            browsers.append((reader, writer, cipher))
+
+        public_ip = "198.51.100.40"
+        first_source = (public_ip, 41001)
+        second_source = (public_ip, 41002)
+        first_keys = {
+            "gamename": "FruitNinjaandam",
+            "hostname": "First Host",
+            "hostport": "6500",
+            "localip0": "192.168.1.10",
+            "localport": "6500",
+            "maxplayers": "2",
+            "numplayers": "1",
+            "gamemode": "openstaging",
+            "natneg": "1",
+        }
+        second_keys = {
+            **first_keys,
+            "hostname": "Second Host",
+            "localip0": "192.168.1.11",
+        }
+
+        try:
+            self.state.report_server(first_source, b"HOST", first_keys)
+            self.state.register_server(first_source)
+            for reader, _, cipher in browsers:
+                pushed = await self.read_browser_frame(reader, cipher)
+                self.assertEqual(pushed[2], PUSH_SERVER_MESSAGE)
+                self.assertIn(socket.inet_aton(public_ip), pushed)
+                self.assertIn(socket.inet_aton("192.168.1.10"), pushed)
+                self.assertIn(b"First Host\x00", pushed)
+
+            self.state.report_server(second_source, b"JOIN", second_keys)
+            self.state.register_server(second_source)
+            for reader, _, _ in browsers:
+                with self.assertRaises(TimeoutError):
+                    await asyncio.wait_for(reader.readexactly(1), 0.05)
+
+            self.state.report_server(
+                first_source,
+                b"HOST",
+                {**first_keys, "numplayers": "2"},
+            )
+            for reader, _, cipher in browsers:
+                deleted = await self.read_browser_frame(reader, cipher)
+                replacement = await self.read_browser_frame(reader, cipher)
+                self.assertEqual(deleted[2], DELETE_SERVER_MESSAGE)
+                self.assertEqual(deleted[3:7], socket.inet_aton(public_ip))
+                self.assertEqual(struct.unpack_from(">H", deleted, 7)[0], 41001)
+                self.assertEqual(replacement[2], PUSH_SERVER_MESSAGE)
+                self.assertIn(socket.inet_aton("192.168.1.11"), replacement)
+                self.assertIn(b"Second Host\x00", replacement)
+
+            self.state.remove_server(second_source)
+            for reader, _, cipher in browsers:
+                removed = await self.read_browser_frame(reader, cipher)
+                self.assertEqual(removed[2], DELETE_SERVER_MESSAGE)
+                self.assertEqual(struct.unpack_from(">H", removed, 7)[0], 41002)
+
+            self.state.report_server(first_source, b"HOST", first_keys)
+            for reader, _, cipher in browsers:
+                restored = await self.read_browser_frame(reader, cipher)
+                self.assertEqual(restored[2], PUSH_SERVER_MESSAGE)
+                self.assertIn(b"First Host\x00", restored)
+        finally:
+            for _, writer, _ in browsers:
+                writer.close()
+            await asyncio.gather(
+                *(writer.wait_closed() for _, writer, _ in browsers),
+                return_exceptions=True,
+            )
+
 
     async def test_auto_fallback_relays_only_paired_opaque_datagrams(self) -> None:
         self.nat_protocol.config = replace(
@@ -246,6 +356,24 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(TimeoutError):
             await asyncio.wait_for(loop.sock_recvfrom(first, 4096), 0.05)
 
+        intruder_init = (
+            MAGIC
+            + bytes((3, NN_INIT))
+            + b"RLY1"
+            + bytes((0, 0, 0))
+            + b"\x00" * 6
+        )
+        with self.assertLogs("fruitspy.natneg", level="WARNING") as captured:
+            await loop.sock_sendto(
+                intruder,
+                intruder_init,
+                ("127.0.0.1", self.nat_port),
+            )
+            with self.assertRaises(TimeoutError):
+                await asyncio.wait_for(loop.sock_recvfrom(intruder, 4096), 0.05)
+        self.assertIn("event=peer_rejected", "\n".join(captured.output))
+        self.assertIn("reason=relay_active", "\n".join(captured.output))
+
         await loop.sock_sendto(first, b"x" * 901, ("127.0.0.1", self.nat_port))
         with self.assertRaises(TimeoutError):
             await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 0.05)
@@ -256,6 +384,35 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         await loop.sock_sendto(first, b"b" * 800, ("127.0.0.1", self.nat_port))
         with self.assertRaises(TimeoutError):
             await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 0.05)
+
+    async def test_active_relay_survives_nat_session_expiry(self) -> None:
+        self.nat_protocol.config = replace(
+            self.config,
+            relay=replace(self.config.relay, fallback_seconds=0.05),
+        )
+        first, second = await self.pair_nat_clients(b"KEEP")
+        first_ping = await self.receive_udp_type(first, NN_CONNECT_PING)
+        second_ping = await self.receive_udp_type(second, NN_CONNECT_PING)
+        loop = asyncio.get_running_loop()
+        await loop.sock_sendto(first, first_ping, ("127.0.0.1", self.nat_port))
+        await loop.sock_sendto(second, second_ping, ("127.0.0.1", self.nat_port))
+        await asyncio.sleep(0)
+
+        session = self.state.nat_sessions[b"KEEP"]
+        session.last_seen -= 61
+        await loop.sock_sendto(first, b"active", ("127.0.0.1", self.nat_port))
+        forwarded, _ = await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 1)
+        self.assertEqual(forwarded, b"active")
+        self.state.expire()
+        self.assertIn(b"KEEP", self.state.nat_sessions)
+
+        session.last_seen -= 61
+        self.state.expire()
+        self.assertNotIn(b"KEEP", self.state.nat_sessions)
+        self.assertIn(b"KEEP", self.nat_protocol._relays)
+        await loop.sock_sendto(first, b"still-relayed", ("127.0.0.1", self.nat_port))
+        forwarded, _ = await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 1)
+        self.assertEqual(forwarded, b"still-relayed")
 
     async def test_direct_success_report_cancels_auto_fallback(self) -> None:
         first, _ = await self.pair_nat_clients(b"DIR1")
@@ -271,6 +428,71 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(acknowledgement[7], NN_REPORT_ACK)
         with self.assertRaises(TimeoutError):
             await self.receive_udp_type(first, NN_CONNECT_PING, 0.15)
+
+    async def test_late_direct_report_closes_unready_fallback_relay(self) -> None:
+        self.nat_protocol.config = replace(
+            self.config,
+            relay=replace(self.config.relay, fallback_seconds=0.05),
+        )
+        first, second = await self.pair_nat_clients(b"RACE")
+        await self.receive_udp_type(first, NN_CONNECT_PING)
+        await self.receive_udp_type(second, NN_CONNECT_PING)
+        self.assertIn(b"RACE", self.nat_protocol._relays)
+        self.assertEqual(self.nat_protocol._relays[b"RACE"].ready, set())
+        report = (
+            MAGIC
+            + bytes((3, NN_REPORT))
+            + b"RACE"
+            + bytes((0, 0, 1))
+            + struct.pack("<II", 2, 2)
+            + b"FruitNinjaand\x00".ljust(50, b"\x00")
+        )
+
+        with self.assertLogs("fruitspy.natneg", level="INFO") as captured:
+            acknowledgement = await self.exchange_udp(first, report, self.nat_port)
+
+        self.assertEqual(acknowledgement[7], NN_REPORT_ACK)
+        self.assertNotIn(b"RACE", self.nat_protocol._relays)
+        self.assertNotIn(first.getsockname(), self.nat_protocol._relay_by_address)
+        self.assertNotIn(second.getsockname(), self.nat_protocol._relay_by_address)
+        self.assertEqual(
+            self.state.nat_sessions[b"RACE"].successful_reports,
+            {0},
+        )
+        output = "\n".join(captured.output)
+        self.assertIn("event=relay_race_resolved session=52414345 outcome=direct", output)
+        self.assertIn("reason=direct_success_race", output)
+
+    async def test_relay_readiness_wins_report_boundary_race(self) -> None:
+        self.nat_protocol.config = replace(
+            self.config,
+            relay=replace(self.config.relay, fallback_seconds=0.05),
+        )
+        first, second = await self.pair_nat_clients(b"RAC2")
+        first_ping = await self.receive_udp_type(first, NN_CONNECT_PING)
+        await self.receive_udp_type(second, NN_CONNECT_PING)
+        loop = asyncio.get_running_loop()
+        await loop.sock_sendto(first, first_ping, ("127.0.0.1", self.nat_port))
+        await asyncio.sleep(0)
+        report = (
+            MAGIC
+            + bytes((3, NN_REPORT))
+            + b"RAC2"
+            + bytes((0, 0, 1))
+            + struct.pack("<II", 2, 2)
+            + b"FruitNinjaand\x00".ljust(50, b"\x00")
+        )
+
+        acknowledgement = await self.exchange_udp(first, report, self.nat_port)
+
+        self.assertEqual(acknowledgement[7], NN_REPORT_ACK)
+        relay = self.nat_protocol._relays[b"RAC2"]
+        self.assertEqual(relay.ready, {0})
+        self.assertEqual(relay.reports, {0})
+        self.assertEqual(
+            self.state.nat_sessions[b"RAC2"].successful_reports,
+            set(),
+        )
 
     async def test_direct_policy_never_allocates_fallback(self) -> None:
         self.nat_protocol.config = replace(

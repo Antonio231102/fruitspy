@@ -6,11 +6,12 @@ import re
 import secrets
 import socket
 import struct
+from dataclasses import dataclass, field
 
 from .admission import ConnectionAdmission
 from .config import ServerConfig
 from .crypto import EnctypeX
-from .state import ReportedServer, ServerState
+from .state import Address, ReportedServer, ServerState
 
 LOG = logging.getLogger(__name__)
 SERVER_LIST_REQUEST = 0
@@ -18,6 +19,8 @@ SERVER_INFO_REQUEST = 1
 PUSH_SERVER_MESSAGE = 2
 SEND_MESSAGE_REQUEST = 2
 SEND_GROUPS = 32
+PUSH_UPDATES = 4
+DELETE_SERVER_MESSAGE = 4
 CONNECT_NEGOTIATE_FLAG = 4
 PRIVATE_IP_FLAG = 2
 NONSTANDARD_PORT_FLAG = 16
@@ -57,6 +60,12 @@ def _matches_filter(server: ReportedServer, expression: str) -> bool:
             return False
     return True
 
+@dataclass(slots=True)
+class ServerListSubscription:
+    query_game: str
+    filter_text: str
+    known_servers: dict[Address, bytes] = field(default_factory=dict)
+
 
 class ServerBrowserServer:
     def __init__(self, config: ServerConfig, state: ServerState) -> None:
@@ -67,7 +76,11 @@ class ServerBrowserServer:
             config.limits.connections_per_source,
         )
 
-    async def handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def handle(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+    ) -> None:
         peer = writer.get_extra_info("peername")
         source = str(peer[0]) if peer else "0.0.0.0"
         connection_id = secrets.token_hex(8)
@@ -83,6 +96,23 @@ class ServerBrowserServer:
                 writer.transport.abort()
             return
         cipher: EnctypeX | None = None
+        subscription: ServerListSubscription | None = None
+        change_event = self.state.subscribe_server_changes()
+
+        async def push_registered_servers() -> None:
+            while True:
+                await change_event.wait()
+                change_event.clear()
+                if cipher is None or subscription is None:
+                    continue
+                frames = self._subscription_frames(subscription)
+                if not frames:
+                    continue
+                for frame in frames:
+                    writer.write(cipher.encrypt(frame))
+                await writer.drain()
+
+        push_task = asyncio.create_task(push_registered_servers())
         LOG.info(
             "service=server_browser event=connected connection=%s source=%s",
             connection_id,
@@ -134,7 +164,10 @@ class ServerBrowserServer:
                     raise ValueError("truncated Server Browser frame")
                 request_type = packet[2]
                 if request_type == SERVER_LIST_REQUEST:
-                    response, cipher = self._handle_list_request(packet, source)
+                    response, cipher, subscription = self._handle_list_request(
+                        packet,
+                        source,
+                    )
                 elif request_type == SERVER_INFO_REQUEST and cipher is not None:
                     response = self._handle_info_request(packet, cipher)
                 elif request_type == SEND_MESSAGE_REQUEST:
@@ -170,6 +203,9 @@ class ServerBrowserServer:
                 error,
             )
         finally:
+            self.state.unsubscribe_server_changes(change_event)
+            push_task.cancel()
+            await asyncio.gather(push_task, return_exceptions=True)
             writer.close()
             try:
                 await asyncio.wait_for(writer.wait_closed(), 1)
@@ -183,16 +219,16 @@ class ServerBrowserServer:
             )
 
     def handle_request(self, packet: bytes, source_ip: str) -> bytes | None:
-        response, _ = self._handle_list_request(packet, source_ip)
+        response, _, _ = self._handle_list_request(packet, source_ip)
         return response
 
     def _handle_list_request(
         self,
         packet: bytes,
         source_ip: str,
-    ) -> tuple[bytes | None, EnctypeX | None]:
+    ) -> tuple[bytes | None, EnctypeX | None, ServerListSubscription | None]:
         if len(packet) < 5 or packet[2] != SERVER_LIST_REQUEST:
-            return None, None
+            return None, None, None
         offset = 3
         list_version = packet[offset]
         encoding_version = packet[offset + 1]
@@ -221,20 +257,35 @@ class ServerBrowserServer:
                 query_game in accepted_query_games,
                 client_game == self.config.game.name,
             )
-            return b"Query Error: Invalid gamename or clientname\x00", None
+            return b"Query Error: Invalid gamename or clientname\x00", None, None
         fields = _field_names(field_list)
+        subscription = None
         if options & SEND_GROUPS:
             body = self._group_body(source_ip, fields)
+            server_count = len(self.state.active_servers(self.config.game.name))
         else:
-            body = self._server_body(source_ip, fields, filter_text)
+            servers = self._listed_servers(query_game, filter_text)
+            body = self._server_body(source_ip, fields, servers)
+            server_count = len(servers)
+            if options & PUSH_UPDATES:
+                subscription = ServerListSubscription(
+                    query_game=query_game,
+                    filter_text=filter_text,
+                    known_servers={
+                        server.source: self._server_entry(server, [], full_rules=True)
+                        for server in servers
+                    },
+                )
         LOG.info(
-            "Server Browser query source=%s fields=%d groups=%s servers=%d",
+            "Server Browser query source=%s fields=%d groups=%s push=%s servers=%d",
             source_ip,
             len(fields),
             bool(options & SEND_GROUPS),
-            len(self.state.active_servers(self.config.game.name)),
+            bool(options & PUSH_UPDATES),
+            server_count,
         )
-        return self._encrypt_response(challenge, body)
+        response, cipher = self._encrypt_response(challenge, body)
+        return response, cipher, subscription
 
     def _handle_info_request(self, packet: bytes, cipher: EnctypeX) -> bytes | None:
         if len(packet) != 9:
@@ -320,15 +371,78 @@ class ServerBrowserServer:
         output.extend(b"\x00\xff\xff\xff\xff")
         return bytes(output)
 
-    def _server_body(self, source_ip: str, fields: list[str], filter_text: str) -> bytes:
+    def _listed_servers(
+        self,
+        query_game: str,
+        filter_text: str,
+    ) -> list[ReportedServer]:
+        servers = [
+            server
+            for server in self.state.active_servers(self.config.game.name)
+            if server.keys.get("gamename") == query_game
+            and _matches_filter(server, filter_text)
+        ]
+        if query_game != f"{self.config.game.name}am":
+            return servers
+
+        compatible = []
+        for server in servers:
+            max_players_text = server.keys.get("maxplayers", "")
+            players_text = server.keys.get("numplayers", "0")
+            if not max_players_text.isdecimal() or not players_text.isdecimal():
+                continue
+            max_players = int(max_players_text)
+            players = int(players_text)
+            if max_players == self.config.game.max_players and players < max_players:
+                compatible.append(server)
+
+        # Peer automatch suppresses its own listing by public IP, private IP, and
+        # private port. Publishing only the oldest open host prevents two clients
+        # that searched an empty list together from abandoning their rooms and
+        # cross-joining each other's newly reported rooms.
+        return compatible[:1]
+
+    def _server_body(
+        self,
+        source_ip: str,
+        fields: list[str],
+        servers: list[ReportedServer],
+    ) -> bytes:
         output = self._response_prefix(
             source_ip, fields, self.config.game.default_query_port
         )
-        for server in self.state.active_servers(self.config.game.name):
-            if _matches_filter(server, filter_text):
-                output.extend(self._server_entry(server, fields))
+        for server in servers:
+            output.extend(self._server_entry(server, fields))
         output.extend(b"\x00\xff\xff\xff\xff")
         return bytes(output)
+
+    def _subscription_frames(
+        self,
+        subscription: ServerListSubscription,
+    ) -> list[bytes]:
+        servers = self._listed_servers(
+            subscription.query_game,
+            subscription.filter_text,
+        )
+        current = {
+            server.source: self._server_entry(server, [], full_rules=True)
+            for server in servers
+        }
+        frames = []
+        for source in subscription.known_servers.keys() - current.keys():
+            payload = (
+                bytes((DELETE_SERVER_MESSAGE,))
+                + socket.inet_aton(source[0])
+                + struct.pack(">H", source[1])
+            )
+            frames.append(struct.pack(">H", len(payload) + 2) + payload)
+        for source, entry in current.items():
+            if subscription.known_servers.get(source) == entry:
+                continue
+            payload = bytes((PUSH_SERVER_MESSAGE,)) + entry
+            frames.append(struct.pack(">H", len(payload) + 2) + payload)
+        subscription.known_servers = current
+        return frames
 
     def _server_entry(
         self,

@@ -17,6 +17,17 @@ from fruitspy.server_browser import ServerBrowserServer
 from fruitspy.state import ServerState
 from tests.helpers import test_config
 
+def natneg_init(cookie: bytes, client_index: int, version: int = 3) -> bytes:
+    return (
+        MAGIC
+        + bytes((version, NN_INIT))
+        + cookie
+        + bytes((0, client_index, 0))
+        + b"\x00" * 6
+    )
+
+
+
 
 def server_browser_request(
     challenge: bytes,
@@ -253,7 +264,7 @@ class NatNegTests(unittest.TestCase):
 
         output = "\n".join(captured.output)
         self.assertIn("event=session_created session=4c4f4731", output)
-        self.assertIn("event=peer_updated session=4c4f4731", output)
+        self.assertIn("event=peer_added session=4c4f4731", output)
         self.assertIn("event=peers_paired session=4c4f4731", output)
         self.assertIn(
             "peer=0 source=('10.0.0.10', 40000) port_type=0 "
@@ -265,6 +276,97 @@ class NatNegTests(unittest.TestCase):
             "use_game_port=False local_endpoint=('192.168.2.20', 32000)",
             output,
         )
+
+    def test_duplicate_init_from_claimed_endpoint_is_idempotent(self) -> None:
+        state = ServerState(120, 60)
+        protocol = NatNegProtocol(test_config(), state)
+        cookie = b"DUPL"
+        address = ("10.0.0.10", 40000)
+
+        protocol.handle_datagram(natneg_init(cookie, 0, version=2), address)
+        with self.assertLogs("fruitspy.natneg", level="INFO") as captured:
+            responses = protocol.handle_datagram(
+                natneg_init(cookie, 0, version=3),
+                address,
+            )
+
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(responses[0][0][7], NN_INIT_ACK)
+        self.assertEqual(set(state.nat_sessions[cookie].peers), {0})
+        self.assertEqual(state.nat_sessions[cookie].peers[0].version, 3)
+        self.assertIn("event=peer_refreshed", "\n".join(captured.output))
+
+    def test_active_cookie_collision_cannot_replace_claimed_index(self) -> None:
+        state = ServerState(120, 60)
+        protocol = NatNegProtocol(test_config(), state)
+        cookie = b"COLL"
+        claimed = ("10.0.0.10", 40000)
+        conflicting = ("10.0.0.20", 40001)
+        protocol.handle_datagram(natneg_init(cookie, 0), claimed)
+        last_seen = state.nat_sessions[cookie].last_seen
+
+        with self.assertLogs("fruitspy.natneg", level="WARNING") as captured:
+            responses = protocol.handle_datagram(
+                natneg_init(cookie, 0),
+                conflicting,
+            )
+
+        self.assertEqual(responses, [])
+        self.assertEqual(state.nat_sessions[cookie].peers[0].address, claimed)
+        self.assertEqual(state.nat_sessions[cookie].last_seen, last_seen)
+        self.assertIn("event=peer_rejected", "\n".join(captured.output))
+        self.assertIn("reason=index_claimed", "\n".join(captured.output))
+
+    def test_one_endpoint_cannot_claim_both_peer_indexes(self) -> None:
+        state = ServerState(120, 60)
+        protocol = NatNegProtocol(test_config(), state)
+        cookie = b"SPUF"
+        address = ("10.0.0.10", 40000)
+        protocol.handle_datagram(natneg_init(cookie, 0), address)
+
+        with self.assertLogs("fruitspy.natneg", level="WARNING") as captured:
+            responses = protocol.handle_datagram(natneg_init(cookie, 1), address)
+
+        self.assertEqual(responses, [])
+        self.assertEqual(set(state.nat_sessions[cookie].peers), {0})
+        self.assertIn("reason=endpoint_claimed", "\n".join(captured.output))
+
+    def test_third_peer_is_rejected_after_pairing(self) -> None:
+        state = ServerState(120, 60)
+        protocol = NatNegProtocol(test_config(), state)
+        cookie = b"THRD"
+        first = ("10.0.0.10", 40000)
+        second = ("10.0.0.20", 40001)
+        third = ("10.0.0.30", 40002)
+        protocol.handle_datagram(natneg_init(cookie, 0), first)
+        protocol.handle_datagram(natneg_init(cookie, 1), second)
+
+        with self.assertLogs("fruitspy.natneg", level="WARNING") as captured:
+            responses = protocol.handle_datagram(natneg_init(cookie, 0), third)
+
+        self.assertEqual(responses, [])
+        self.assertEqual(
+            {peer.address for peer in state.nat_sessions[cookie].peers.values()},
+            {first, second},
+        )
+        self.assertIn("reason=session_full", "\n".join(captured.output))
+
+    def test_expired_cookie_can_be_reclaimed(self) -> None:
+        state = ServerState(120, 1)
+        protocol = NatNegProtocol(test_config(), state)
+        cookie = b"REUS"
+        expired = ("10.0.0.10", 40000)
+        replacement = ("10.0.0.20", 40001)
+        protocol.handle_datagram(natneg_init(cookie, 0), expired)
+        old_session = state.nat_sessions[cookie]
+        old_session.last_seen -= 2
+
+        responses = protocol.handle_datagram(natneg_init(cookie, 0), replacement)
+
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(responses[0][0][7], NN_INIT_ACK)
+        self.assertIsNot(state.nat_sessions[cookie], old_session)
+        self.assertEqual(state.nat_sessions[cookie].peers[0].address, replacement)
 
     def test_report_logs_boolean_negotiation_outcome(self) -> None:
         protocol = NatNegProtocol(test_config(), ServerState(120, 60))

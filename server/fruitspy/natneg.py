@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from .admission import SourceRateLimiter
 from .config import ServerConfig
-from .state import Address, ServerState
+from .state import Address, NatPeerClaimRejected, ServerState
 
 LOG = logging.getLogger(__name__)
 MAGIC = b"\xfd\xfc\x1e\x66\x6a\xb2"
@@ -153,12 +153,53 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 socket.inet_ntoa(data[15:19]),
                 struct.unpack_from(">H", data, 19)[0],
             )
-            is_new_session = cookie not in self.state.nat_sessions
-            session = self.state.touch_nat_peer(cookie, client_index, addr, version)
+            relay = self._relays.get(cookie)
+            if relay is not None:
+                endpoint = relay.endpoints.get(client_index)
+                if endpoint is None or endpoint.address != addr:
+                    LOG.warning(
+                        "service=natneg event=peer_rejected session=%s peer=%d "
+                        "source=%s reason=relay_active",
+                        cookie.hex(),
+                        client_index,
+                        addr,
+                    )
+                    return []
+                relay.last_seen = time.monotonic()
+                LOG.info(
+                    "service=natneg event=peer_refreshed session=%s peer=%d source=%s "
+                    "port_type=%d use_game_port=%s local_endpoint=%s",
+                    cookie.hex(),
+                    client_index,
+                    addr,
+                    port_type,
+                    bool(use_game_port),
+                    local_endpoint,
+                )
+                return [(self._with_type(data, NN_INIT_ACK), addr)]
+            # A stock INIT proves only cookie and index knowledge. Preserve the first
+            # accepted endpoint for each index; conflicting claims must not mutate it.
+            try:
+                session, event = self.state.claim_nat_peer(
+                    cookie,
+                    client_index,
+                    addr,
+                    version,
+                )
+            except NatPeerClaimRejected as error:
+                LOG.warning(
+                    "service=natneg event=peer_rejected session=%s peer=%d "
+                    "source=%s reason=%s",
+                    cookie.hex(),
+                    client_index,
+                    addr,
+                    error.reason,
+                )
+                return []
             LOG.info(
                 "service=natneg event=%s session=%s peer=%d source=%s "
                 "port_type=%d use_game_port=%s local_endpoint=%s",
-                "session_created" if is_new_session else "peer_updated",
+                event,
                 cookie.hex(),
                 client_index,
                 addr,
@@ -284,8 +325,19 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 addr,
             )
             return
-        session.last_seen = time.monotonic()
+        now = time.monotonic()
+        session.last_seen = now
         relay = self._relays.get(cookie)
+        if relay is not None and success and not relay.ready:
+            LOG.info(
+                "service=natneg event=relay_race_resolved session=%s "
+                "outcome=direct peer=%d relay_age_ms=%d",
+                cookie.hex(),
+                client_index,
+                round((now - relay.started_at) * 1000),
+            )
+            self._finish_relay(cookie, "direct_success_race")
+            relay = None
         if relay is not None:
             if success:
                 relay.reports.add(client_index)
@@ -404,6 +456,9 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         was_ready = relay.ready == {0, 1}
         relay.ready.add(index)
         relay.last_seen = now
+        session = self.state.nat_sessions.get(cookie)
+        if session is not None:
+            session.last_seen = now
         if is_new_peer:
             LOG.info(
                 "service=natneg event=relay_peer_ready session=%s peer=%d",
@@ -429,6 +484,9 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             self._relay_by_address.pop(addr, None)
             return False
         relay.last_seen = now
+        session = self.state.nat_sessions.get(cookie)
+        if session is not None:
+            session.last_seen = now
         endpoint = relay.endpoints[index]
         if len(data) > self.config.relay.packet_bytes:
             relay.drops += 1

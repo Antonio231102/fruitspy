@@ -102,7 +102,7 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         instance_key = data[1:5]
         keys = parse_qr_server_keys(data)
         if keys.get("statechanged") == "2":
-            self.state.reported_servers.pop(addr, None)
+            self.state.remove_server(addr)
             LOG.info("QR server removed source=%s", addr)
             return None
         game_name = keys.get("gamename")
