@@ -50,8 +50,9 @@ The direct-first service and bounded relay fallback are deployed:
 - Bounded relay allocations by hard TTL, packet size, per-endpoint byte rate and burst, global session count, exact endpoint admission, and NatNeg endpoint proof.
 - Completed two consecutive Wi-Fi/cellular games plus a reverse-host game through the relay. Re-ran LAN gameplay under the same `auto` policy; both direct reports arrived within 27 ms and no relay was allocated.
 - Implemented GameSpy `PUSH_UPDATES` delivery for newly registered and changed QR2 hosts. Automatch now publishes the oldest compatible open host, preventing clients that searched an empty list simultaneously from both remaining hosts or cross-joining newly created rooms. The regression passed 20 repeated runs plus host-full rotation, host removal, and recovery checks. Through the public VPS, a synthetic same-egress two-browser/two-QR probe and three real-device games passed: simultaneous entry, Galaxy S4 first, and Galaxy S20 first.
+- Re-ran the real-device compatibility checkpoint after graceful-drain deployment. A same-LAN game and rematch completed without relay allocation. Wi-Fi/cellular games completed in both hosting directions; each established a relay after the three-second direct window, both peers reported success, 546 gameplay packets were forwarded with zero drops, and no protocol rejection counters increased. A post-match controlled restart retained both inactive relays for the configured 30-second drain window, closed them explicitly with `reason=server_drain_timeout`, returned relay/session gauges to zero, and left all four protocol health checks passing.
 
-Next: retain the direct and relay acceptance matrix while beginning Phase 4 public-service hardening.
+Next: retain the direct and relay acceptance matrix while fuzzing every exposed protocol parser, then run capacity and failure-mode tests.
 
 ## Phase 1 — Freeze the LAN baseline
 
