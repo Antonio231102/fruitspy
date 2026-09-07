@@ -9,7 +9,7 @@ End-user walkthroughs:
 
 This runbook deploys the single-node, direct-first Internet service with bounded UDP relay fallback. It does not provide accounts, transport encryption, or protection equivalent to a modern public game service. Keep access limited to known testers until the validation matrix passes.
 
-FruitSpy currently requires public IPv4 reachability. The APK patch target may be an IPv4 address or a DNS name shorter than 20 ASCII bytes because the native-library rewrite is size-preserving.
+FruitSpy currently requires public IPv4 reachability. The APK patch target may be an IPv4 address or a DNS name of at most 18 ASCII bytes because the native-library rewrite is size-preserving.
 
 ## Network contract
 
@@ -167,15 +167,17 @@ From a separate network, verify TCP exposure with a TCP connection tool and UDP 
 
 ## Patch test clients
 
-From the repository root, patch each lawfully owned Fruit Ninja 1.7.6 APK with the exact public DNS name:
+From the repository root, build each test client from the clean, lawfully owned Fruit Ninja 1.7.6 APK using the exact public DNS name:
 
 ```text
-python server/patch_apk.py original.apk patched-unsigned.apk \
+python server/patch_apk.py original.apk patched.apk \
   --server-host games.example.net \
-  --report server/apk-patch-report.json
+  --non-interactive
 ```
 
-Align and sign each generated APK with the operator's own key. Never upload APKs, signing keys, passwords, packet captures, or device identifiers to the repository.
+The patcher rejects any whole-APK hash other than the supported clean release, applies the clock and endpoint transformations to all three packaged ABIs, and writes a manifest beside the output. By default it discovers JDK `keytool` plus Android SDK `zipalign` and `apksigner`, creates a random per-user signing key on the first run, aligns and signs the APK, and verifies both alignment and its legacy-compatible v1 signature. Later builds reuse the same local identity for update compatibility.
+
+Back up the FruitSpy signing directory documented in `README.md`. Losing it requires uninstalling the existing patched application before installing a build signed by a new key. Never upload source or generated APKs, signing keys, signing passwords, deployment manifests, packet captures, or device identifiers to the repository.
 
 ## Two-network validation matrix
 

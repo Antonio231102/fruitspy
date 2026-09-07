@@ -153,15 +153,29 @@ Fruit Ninja's linked GameSpy SDK contains an unused `CDKEY` command path, but th
 
 ## Patch a locally owned APK
 
-The repository does not distribute Fruit Ninja or a prebuilt APK. Given a legally obtained Fruit Ninja 1.7.6 APK, rewrite its GameSpy endpoints with:
+The repository does not distribute Fruit Ninja or a prebuilt APK. The patcher accepts only the clean Fruit Ninja 1.7.6 APK with SHA-256 `5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650`. It applies the monotonic-clock correction followed by the configurable FruitSpy endpoint patch to `armeabi`, `armeabi-v7a`, and `x86`, removes the obsolete APK signature, aligns the result, and signs it.
+
+For the guided workflow:
 
 ```text
-python server/patch_apk.py original.apk patched-unsigned.apk \
-  --server-host 192.168.100.2 \
-  --report server/apk-patch-report.json
+python server/patch_apk.py
 ```
 
-Replace `192.168.100.2` with the server address reachable by the devices. Short DNS names such as `games.example.net` are also accepted for Internet deployments. The replacement must fit the shortest embedded GameSpy hostname. Align and sign the generated APK using your own Android signing key. The patcher modifies only the `armeabi-v7a` and `x86` libraries; the legacy `armeabi` library remains untouched.
+The prompts request the clean APK and the server address. The default output is `<input name> - FruitSpy.apk`; a machine-readable manifest is written beside it. For automation:
+
+```text
+python server/patch_apk.py original.apk patched.apk \
+  --server-host 192.168.100.2 \
+  --non-interactive
+```
+
+Replace `192.168.100.2` with the IPv4 address reachable by the devices. Short DNS names such as `games.example.net` are accepted for Internet deployments; the value must be at most 18 ASCII bytes because every binary rewrite is size-preserving.
+
+Automatic signing requires a JDK `keytool` and Android SDK Build Tools containing `zipalign` and `apksigner`. The patcher discovers them from `PATH`, `JAVA_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and standard SDK locations. Explicit `--keytool`, `--zipalign`, `--apksigner`, and `--android-sdk` paths are also supported.
+
+On the first signed build, the patcher generates a random local RSA signing identity and stores it under `%LOCALAPPDATA%\FruitSpy` on Windows, `~/Library/Application Support/FruitSpy` on macOS, or `${XDG_DATA_HOME:-~/.local/share}/fruitspy` on Linux. Subsequent builds reuse that identity so they can update an existing FruitSpy installation. Back up this directory: losing it requires uninstalling the existing patched app before installing a build signed by a replacement key. Never upload the keystore, its `signing.json`, generated APKs, or manifests containing deployment-specific addresses to the repository.
+
+Use `--unsigned` only when an unsigned, unaligned intermediate is required. That mode does not require Java or Android Build Tools; alignment and signing must then be completed before installation.
 
 ## Verification
 

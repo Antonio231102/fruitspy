@@ -285,17 +285,17 @@ The local check proves process readiness. The remote check additionally exercise
 
 ## 9. Patch the client APKs
 
-On your local development computer, not on the VPS:
+On your local computer, not on the VPS:
 
 ```text
-python server/patch_apk.py original.apk patched-unsigned.apk \
+python server/patch_apk.py original.apk patched.apk \
   --server-host fn.example.net \
-  --report server/apk-patch-report.json
+  --non-interactive
 ```
 
-Use the exact hostname in `/etc/fruitspy/config.json`. Align and sign the output with your own Android signing key. Never upload an original or patched APK, signing key, password, or extracted game assets to the VPS or repository.
+Use the exact hostname in `/etc/fruitspy/config.json`. The patcher applies both client transformations to all three ABIs, creates or reuses a random per-user signing identity, aligns and signs the APK, verifies the result, and writes a manifest beside it. JDK `keytool` and Android SDK Build Tools are required.
 
-A copy signed with your key cannot normally update an installation signed by another key. Back up anything important before uninstalling the existing app.
+The first patched installation cannot update an original copy or a build signed by another key. Later builds from this computer can update one another because the local key is persistent. Back up the FruitSpy signing directory documented in `README.md`; never upload an original or patched APK, signing material, generated deployment manifest, or extracted game assets to the VPS or repository.
 
 ## 10. Validate Internet gameplay
 

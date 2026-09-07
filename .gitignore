@@ -11,8 +11,11 @@ dist/
 # Proprietary or generated Android artifacts
 *.apk
 *.apk.idsig
+*.apk.manifest.json
 *.keystore
 *.jks
+*.p12
+signing.json
 
 # Local capture and UI-inspection artifacts
 *.pcap

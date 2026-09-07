@@ -163,18 +163,18 @@ Purpose: publish a reproducible preservation project without redistributing prop
 
 ### Unified client patch pipeline
 
-- [ ] Replace the endpoint-patcher/clock-patcher chain with one deterministic pipeline that starts from an allowlisted Fruit Ninja 1.7.6 APK hash.
-- [ ] Apply the configurable FruitSpy endpoint and monotonic clock correction in a defined order within that pipeline.
-- [ ] Ensure every retained ABI receives both required transformations; either implement the endpoint patch for `armeabi` or explicitly remove that ABI from the supported contract.
-- [ ] Reject unsupported or modified whole APKs before writing output, not only unexpected native-library bytes.
-- [ ] Produce an unsigned APK and machine-readable manifest containing input, output, per-library, payload, and tool-version hashes.
-- [ ] Keep signing separate and document alignment plus signing with a user-owned key.
-- [ ] Consume the compatibility project as source/tooling; never copy its APK inputs, APK outputs, or extracted proprietary libraries into this repository.
-- [ ] Add automated composition tests for IPv4 and short-DNS endpoint targets across every supported ABI.
+- [x] Replace the endpoint-patcher/clock-patcher chain with one deterministic pipeline that starts from the allowlisted Fruit Ninja 1.7.6 APK hash.
+- [x] Apply the monotonic clock correction followed by the configurable FruitSpy endpoint patch in a defined order within that pipeline.
+- [x] Apply both transformations to `armeabi`, `armeabi-v7a`, and `x86`. The legacy `armeabi` NatNeg branch targets were mapped to their ABI-specific instruction offsets and are guarded by exact preimages.
+- [x] Reject unsupported or modified whole APKs before writing output, then retain per-library and per-instruction fail-closed checks.
+- [x] Support an explicit unsigned APK and machine-readable manifest containing input, output, per-library, payload, and tool-version hashes.
+- [x] Make the default output installable without a shared project key: generate and persist one random per-user key, align before signing, enable legacy-compatible v1 signing, and verify alignment plus the final signature. Retain `--unsigned` for external signing workflows.
+- [x] Consume the compatibility project as source/tooling; only reproducible assembly and payload binaries are included, never its APK inputs, APK outputs, or extracted proprietary libraries.
+- [x] Add automated composition tests for IPv4 and short-DNS endpoint targets across `armeabi`, `armeabi-v7a`, and `x86`, plus a locally activated clean-APK integration case.
 
 ### Repository and release hygiene
 
-- [ ] Replace `server/apk-patch-map.json` and `server/apk-patch-report.json` with host-neutral reproducible fixtures or remove generated operator output from version control.
+- [x] Remove the tracked deployment-specific `server/apk-patch-map.json` and `server/apk-patch-report.json`; manifests are generated beside local outputs and remain operator artifacts.
 - [ ] Choose and add a project license; do not assume a license without owner approval.
 - [ ] Publish source, tests, protocol notes, and deterministic patch tooling only.
 - [ ] Never publish Fruit Ninja APKs, extracted native libraries, signing keystores, signing passwords, packet captures, or copyrighted game assets.

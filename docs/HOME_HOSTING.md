@@ -169,17 +169,17 @@ Run the health check after restarting Windows before opening an Internet test wi
 
 ## 8. Patch each test APK
 
-From the FruitSpy directory:
+From the FruitSpy directory, run the guided patcher:
 
 ```text
-py -3 server\patch_apk.py original.apk patched-unsigned.apk ^
-  --server-host fn.example.net ^
-  --report server\apk-patch-report.json
+py -3 server\patch_apk.py
 ```
 
-Replace the example hostname with the exact DNS name from `config.local.json`. Align and sign the generated APK with your own Android signing key.
+Select the clean Fruit Ninja 1.7.6 APK and enter the exact DNS name from `config.local.json`. The patcher applies both compatibility fixes to all three ABIs, creates a random per-user signing key when needed, aligns and signs the output, and verifies it. JDK `keytool` and Android SDK Build Tools are required for the default installable output.
 
-A self-signed patched APK cannot normally update an installed copy signed by a different key. Back up anything important before uninstalling the existing app, and never publish the original or patched APK, signing key, password, or extracted game assets.
+The first patched installation cannot update an original copy signed by Halfbrick or a patched copy signed by another key. Back up anything important before uninstalling the existing app. Later APKs produced on this computer reuse the same local signing identity and can update each other.
+
+Back up `%LOCALAPPDATA%\FruitSpy` to preserve that update identity. Never publish the original or patched APK, the signing directory, its password file, generated deployment manifests, or extracted game assets.
 
 ## 9. Verify access from another network
 
