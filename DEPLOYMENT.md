@@ -170,7 +170,7 @@ From a separate network, verify TCP exposure with a TCP connection tool and UDP 
 From the repository root, build each test client from the clean, lawfully owned Fruit Ninja 1.7.6 APK using the exact public DNS name:
 
 ```text
-python server/patch_apk.py original.apk patched.apk \
+python patcher/patch_apk.py original.apk patched.apk \
   --server-host games.example.net \
   --non-interactive
 ```

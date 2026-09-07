@@ -2,6 +2,12 @@
 
 FruitSpy is a standalone GameSpy-compatible multiplayer service for Fruit Ninja 1.7.6. The first checkpoint restores two-player LAN matchmaking and direct gameplay without depending on the retired GameSpy infrastructure.
 
+## Repository layout
+
+- `server/` — standalone GameSpy-compatible services, deployment configuration, and protocol tests.
+- `patcher/` — neutral interactive/non-interactive APK patcher, automatic local signing workflow, and patcher tests.
+- `slow-motion-fix/` — slow-motion investigation, validation records, native payload source, reproducible payload binaries, and payload build tooling.
+
 ## Checkpoint 1: LAN multiplayer
 
 Implemented services:
@@ -158,13 +164,13 @@ The repository does not distribute Fruit Ninja or a prebuilt APK. The patcher ac
 For the guided workflow:
 
 ```text
-python server/patch_apk.py
+python patcher/patch_apk.py
 ```
 
 The prompts request the clean APK and a server address; no VPS, local IP, or DNS name is predefined. The patcher waits for the user-supplied endpoint before building. The default output is `<input name> - FruitSpy.apk`; a machine-readable manifest is written beside it. For automation:
 
 ```text
-python server/patch_apk.py original.apk patched.apk \
+python patcher/patch_apk.py original.apk patched.apk \
   --server-host 192.168.100.2 \
   --non-interactive
 ```
@@ -182,9 +188,11 @@ Use `--unsigned` only when an unsigned, unaligned intermediate is required. That
 ```text
 cd server
 python -m unittest
+cd ..
+python -m unittest patcher.tests.test_patch_apk
 ```
 
-The suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, activity-aware relay idle expiry, byte and packet limits, global relay capacity, and deterministic APK patching.
+The server suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, activity-aware relay idle expiry, byte and packet limits, and global relay capacity. The separate patcher suite covers deterministic clock/endpoint composition, all three ABIs, neutral endpoint input, local key persistence, alignment, and signing verification.
 
 The fuzz regressions use a deterministic mutation corpus against QR2 and NatNeg datagrams, Server Browser frames and filters, and encrypted PeerChat commands. The default case count keeps the complete suite fast:
 

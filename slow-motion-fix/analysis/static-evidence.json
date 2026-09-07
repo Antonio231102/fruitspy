@@ -1,0 +1,78 @@
+{
+  "analyzed_original_apk": {
+    "package": "com.halfbrick.fruitninja",
+    "version_code": 1706,
+    "version_name": "1.7.6",
+    "sha256": "5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650",
+    "minimum_sdk": 7,
+    "explicit_target_sdk": null,
+    "native_abis": [
+      "armeabi",
+      "armeabi-v7a",
+      "x86"
+    ]
+  },
+  "fruitspy_input_apk_sha256": "74e96335b643ee79704b89a3f488c9c70274bf0bd69911dcee758c4bb24e06f7",
+  "hardened_apk_sha256": "ee67e367f06d6cdbdb51ed5c5f9e892f7605439d3ff0876556bd99b856d01b21",
+  "implementation": {
+    "clock": "Linux clock_gettime(CLOCK_MONOTONIC) syscall",
+    "result_unit": "microseconds, low 32 bits",
+    "maximum_frame_delta_microseconds": 250000,
+    "replacement_frame_delta_microseconds": 16667
+  },
+  "native_patches": {
+    "armeabi": {
+      "input_sha256": "f3504049d4c89a60260ed12bfddb36520db1d92db8532983344e88efd5714d29",
+      "output_sha256": "5ceba5b4f6aa1091ec91af14df9708bfeccaa7630585120f1bce813f05b5c4f1",
+      "clock_call_file_offset_hex": "0x1e4518",
+      "clock_helper_vaddr_hex": "0x3a2ce4",
+      "conversion_file_offset_hex": "0x1e4544",
+      "guard_helper_vaddr_hex": "0x3a2d30",
+      "payload_size": 104,
+      "payload_sha256": "af424f843eb6d16e18c03b49ce1076fb7b283a01482ec84e4ceedd142c88f9af",
+      "later_file_offset_shift": 0
+    },
+    "armeabi-v7a": {
+      "input_sha256": "7968f40f7fd136acedff1571b39cbf6b3abcdf01979d3c5060121efb7eb28bf8",
+      "output_sha256": "ae3e230343b48b044fc6b823d80f6f28995ebd5308ad0cf24d5cfec509ab735c",
+      "clock_call_file_offset_hex": "0x1e3204",
+      "clock_helper_vaddr_hex": "0x3a592c",
+      "conversion_file_offset_hex": "0x1e3230",
+      "guard_helper_vaddr_hex": "0x3a5978",
+      "payload_size": 104,
+      "payload_sha256": "16297923317059a10dfeb3b709ad9155278bcf85e7622b0b67e6a5b4d36af4aa",
+      "later_file_offset_shift": 4096
+    },
+    "x86": {
+      "input_sha256": "8315fbfd22899e6835afa0a733d32baf75864db19144e8e2d50744a24a780504",
+      "output_sha256": "a92c54190ba887cece754053aa496c63ccf551478c6e202e79831ae34983fc25",
+      "clock_call_file_offset_hex": "0x1d4ed6",
+      "clock_helper_vaddr_hex": "0x3a639c",
+      "conversion_file_offset_hex": "0x1d4ef4",
+      "guard_helper_vaddr_hex": "0x3a63cc",
+      "payload_size": 73,
+      "payload_sha256": "2f281cc847d8fca9362fd53558a8713289a4d4cec653d6ec3a9565ae9b26ced8",
+      "later_file_offset_shift": 4096
+    }
+  },
+  "static_output_verification": {
+    "changed_payload_entries_excluding_signatures": [
+      "lib/armeabi/libmortargame.so",
+      "lib/armeabi-v7a/libmortargame.so",
+      "lib/x86/libmortargame.so"
+    ],
+    "payload_source_reproduction": true,
+    "builder_idempotence_check": true,
+    "unknown_library_hashes_fail_closed": true,
+    "load_segment_congruence": true,
+    "dynamic_metadata_bytes_unchanged": true,
+    "zipalign_4_byte_verification": true,
+    "apk_signature_schemes": [
+      "v1",
+      "v2",
+      "v3"
+    ],
+    "signer_certificate_sha256": "95e24a3785f3a47bd19a8acb3920fe5d0a25e70b42169df262d6a0f15947c448"
+  },
+  "runtime_status": "pending for hardened candidate"
+}

@@ -169,7 +169,7 @@ Purpose: publish a reproducible preservation project without redistributing prop
 - [x] Reject unsupported or modified whole APKs before writing output, then retain per-library and per-instruction fail-closed checks.
 - [x] Support an explicit unsigned APK and machine-readable manifest containing input, output, per-library, payload, and tool-version hashes.
 - [x] Make the default output installable without a shared project key: generate and persist one random per-user key, align before signing, enable legacy-compatible v1 signing, and verify alignment plus the final signature. Retain `--unsigned` for external signing workflows.
-- [x] Consume the compatibility project as source/tooling; only reproducible assembly and payload binaries are included, never its APK inputs, APK outputs, or extracted proprietary libraries.
+- [x] Integrate the compatibility work as `slow-motion-fix/` and keep the unified release-facing builder in `patcher/`; only reproducible assembly and payload binaries are included, never APK inputs, APK outputs, or extracted proprietary libraries.
 - [x] Add automated composition tests for IPv4 and short-DNS endpoint targets across `armeabi`, `armeabi-v7a`, and `x86`, plus a locally activated clean-APK integration case.
 
 ### Repository and release hygiene

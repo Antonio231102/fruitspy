@@ -7,8 +7,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-NATIVE = ROOT / "patcher_native"
+ROOT = Path(__file__).resolve().parent.parent
+NATIVE = ROOT / "native"
 OUTPUT = NATIVE / "payloads"
 
 

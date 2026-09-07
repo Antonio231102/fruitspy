@@ -172,7 +172,7 @@ Run the health check after restarting Windows before opening an Internet test wi
 From the FruitSpy directory, run the guided patcher:
 
 ```text
-py -3 server\patch_apk.py
+py -3 patcher\patch_apk.py
 ```
 
 Select the clean Fruit Ninja 1.7.6 APK and enter the exact DNS name from `config.local.json`. The patcher applies both compatibility fixes to all three ABIs, creates a random per-user signing key when needed, aligns and signs the output, and verifies it. JDK `keytool` and Android SDK Build Tools are required for the default installable output.

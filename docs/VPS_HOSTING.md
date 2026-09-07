@@ -288,7 +288,7 @@ The local check proves process readiness. The remote check additionally exercise
 On your local computer, not on the VPS:
 
 ```text
-python server/patch_apk.py original.apk patched.apk \
+python patcher/patch_apk.py original.apk patched.apk \
   --server-host fn.example.net \
   --non-interactive
 ```

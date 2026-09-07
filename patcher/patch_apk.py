@@ -23,7 +23,7 @@ TOOL_VERSION = "1"
 CLEAN_APK_SHA256 = "5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650"
 TARGET_ABIS = ("armeabi", "armeabi-v7a", "x86")
 LIBRARY = "libmortargame.so"
-NATIVE_ROOT = Path(__file__).resolve().parent / "patcher_native"
+NATIVE_ROOT = Path(__file__).resolve().parent.parent / "slow-motion-fix" / "native"
 GAMESPY_HOSTS = (
     b"%s.available.gamespy.com",
     b"peerchat.gamespy.com",

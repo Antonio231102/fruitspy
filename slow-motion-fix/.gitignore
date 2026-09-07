@@ -1,0 +1,19 @@
+# Proprietary/local APK inputs and generated install artifacts
+input/
+build/
+
+# Large generated reverse-engineering intermediates
+analysis/classes.dex
+analysis/lib/
+analysis/*-disassembly.txt
+analysis/dexdump.txt
+analysis/*-symbols.txt
+
+# Local signing material must never be stored here
+*.keystore
+*.jks
+*.p12
+signing.json
+
+__pycache__/
+*.pyc

@@ -10,7 +10,7 @@ import tempfile
 import unittest
 import zipfile
 
-from patch_apk import (
+from patcher.patch_apk import (
     CLEAN_APK_SHA256,
     CLOCK_PATCHES,
     GAMESPY_HOSTS,
@@ -169,7 +169,7 @@ class ApkPatchTests(unittest.TestCase):
             no_report=True,
             report=None,
         )
-        with mock.patch("patch_apk.sys.stdin.isatty", return_value=True):
+        with mock.patch("patcher.patch_apk.sys.stdin.isatty", return_value=True):
             with mock.patch(
                 "builtins.input",
                 side_effect=["clean.apk", "fn.example.net"],
@@ -270,7 +270,7 @@ class ApkPatchTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            with mock.patch("patch_apk.run_checked", side_effect=fake_run):
+            with mock.patch("patcher.patch_apk.run_checked", side_effect=fake_run):
                 created = ensure_signing_material(root, Path("keytool"))
                 reused = ensure_signing_material(root, Path("keytool"))
             self.assertTrue(created.created)
@@ -329,7 +329,7 @@ class ApkPatchTests(unittest.TestCase):
                 key_password="key-secret",
                 created=True,
             )
-            with mock.patch("patch_apk.run_checked", side_effect=fake_run):
+            with mock.patch("patcher.patch_apk.run_checked", side_effect=fake_run):
                 record = align_sign_and_verify(
                     unsigned,
                     signed,
