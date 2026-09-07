@@ -17,6 +17,11 @@ class MetricsRegistryTests(unittest.TestCase):
             reason="source_rate_limit",
         )
         metrics.observe("fruitspy_natneg_setup_seconds", 0.2, path="direct")
+        metrics.increment("fruitspy_qr_events_total", event="registered")
+        metrics.increment("fruitspy_peerchat_events_total", event="joined")
+        metrics.increment("fruitspy_natneg_session_events_total", event="paired")
+        metrics.increment("fruitspy_relay_events_total", event="ready")
+        metrics.increment("fruitspy_discovery_results_total", result="rejected")
 
         output = metrics.render().decode("utf-8")
 
@@ -40,6 +45,26 @@ class MetricsRegistryTests(unittest.TestCase):
         )
         self.assertIn('fruitspy_natneg_setup_seconds_count{path="direct"} 1', output)
         self.assertIn('fruitspy_natneg_setup_seconds_sum{path="direct"} 0.2', output)
+        self.assertIn(
+            'fruitspy_qr_events_total{event="registered"} 1',
+            output,
+        )
+        self.assertIn(
+            'fruitspy_peerchat_events_total{event="joined"} 1',
+            output,
+        )
+        self.assertIn(
+            'fruitspy_natneg_session_events_total{event="paired"} 1',
+            output,
+        )
+        self.assertIn(
+            'fruitspy_relay_events_total{event="ready"} 1',
+            output,
+        )
+        self.assertIn(
+            'fruitspy_discovery_results_total{result="rejected"} 1',
+            output,
+        )
 
     def test_registry_rejects_unbounded_or_unknown_labels(self) -> None:
         metrics = MetricsRegistry()

@@ -116,6 +116,40 @@ The metrics listener is separate from the four GameSpy listeners. Configuration 
 
 During a graceful stop, `fruitspy_server_draining` becomes `1`. `fruitspy_drain_events_total` distinguishes a completed drain from a timeout, while `relay_closed` logs identify forced closures with `reason=server_drain_timeout`.
 
+### Per-attempt diagnosis
+
+Capture a counter baseline immediately before launching either game client:
+
+```text
+python -m fruitspy.diagnostics capture /tmp/fruitspy-before.json
+```
+
+After the attempt, report whether gameplay passed or failed:
+
+```text
+python -m fruitspy.diagnostics compare /tmp/fruitspy-before.json \
+  --game-result failed
+rm /tmp/fruitspy-before.json
+```
+
+Do not restart FruitSpy between these commands. The comparison rejects a baseline if any counter decreased because process-local metrics cannot span a restart. Do not run the health check inside the capture window: its Availability and NatNeg probes are intentionally real protocol traffic.
+
+The output follows the client-visible pipeline:
+
+| Stage | Evidence |
+| --- | --- |
+| `availability` | An accepted Fruit Ninja Availability request reached UDP 27900 |
+| `qr_registration` | A host received and answered its QR2 challenge |
+| `peerchat` | Two encrypted clients registered and joined staging rooms |
+| `discovery` | Server Browser returned a nonempty host list |
+| `natneg` | Two endpoint claims paired under one NatNeg cookie |
+| `path` | A direct success report arrived, or a relay activated, became ready, was accepted by both clients, and forwarded gameplay |
+| `rejections` | Admission and protocol rejection deltas, followed by their fixed service/reason series |
+
+`SUMMARY failure_domain=server_pipeline` identifies the first incomplete server-observed boundary in the preceding lines. For a failed game, `client_or_peer_path` means a client reported direct negotiation success but FruitSpy cannot observe subsequent peer-to-peer gameplay. `client_or_gameplay` requires an established relay that forwarded packets with zero server drops. These conclusions isolate the server boundary; they do not claim that the application UI or gameplay logic succeeded.
+
+The snapshot contains only fixed aggregate counters. It excludes source addresses, session cookies, connection identifiers, nicknames, room and host names, messages, and payloads. Use the timestamp-correlated structured journal only when per-session sequencing is needed.
+
 ## Health check
 
 Run from the server itself:

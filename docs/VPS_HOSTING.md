@@ -197,6 +197,8 @@ Do not open TCP 9108 in UFW or the provider firewall. The endpoint has fixed, bo
 
 While a stop is draining active relays, the metrics endpoint remains available with `fruitspy_server_draining 1`. Drain counters and structured `drain_started`, `drain_completed`, or `drain_timed_out` events distinguish clean maintenance from a forced relay deadline.
 
+For a single game attempt, use `python -m fruitspy.diagnostics capture` immediately before launching the clients and `python -m fruitspy.diagnostics compare` afterward. The comparison reports each matchmaking stage and rejection delta without storing addresses, cookies, names, or payloads. See [Per-attempt diagnosis](../DEPLOYMENT.md#per-attempt-diagnosis) for the exact commands and interpretation.
+
 ### Rootless systemd alternative
 
 If the VPS account cannot use `sudo`, FruitSpy can run from the account's home directory because all four service ports are above 1024. This does not grant permission to change the host firewall.

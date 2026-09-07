@@ -44,6 +44,12 @@ _METRICS = (
         "gauge",
     ),
     _MetricSpec(
+        "fruitspy_peerchat_events_total",
+        "Successful PeerChat lifecycle events.",
+        "counter",
+        (("event", ("connected", "registered", "joined", "disconnected")),),
+    ),
+    _MetricSpec(
         "fruitspy_qr_reported_servers",
         "Current QR2 server records, including pending challenges.",
         "gauge",
@@ -54,6 +60,25 @@ _METRICS = (
         "gauge",
     ),
     _MetricSpec(
+        "fruitspy_qr_events_total",
+        "QR2 availability and host-registration lifecycle events.",
+        "counter",
+        (
+            (
+                "event",
+                (
+                    "availability_accepted",
+                    "availability_rejected",
+                    "challenge_issued",
+                    "registered",
+                    "removed",
+                    "game_rejected",
+                    "proof_rejected",
+                ),
+            ),
+        ),
+    ),
+    _MetricSpec(
         "fruitspy_server_browser_connections",
         "Current admitted Server Browser connections.",
         "gauge",
@@ -62,6 +87,12 @@ _METRICS = (
         "fruitspy_natneg_sessions",
         "Current NatNeg setup sessions.",
         "gauge",
+    ),
+    _MetricSpec(
+        "fruitspy_natneg_session_events_total",
+        "NatNeg setup-session lifecycle events.",
+        "counter",
+        (("event", ("created", "paired")),),
     ),
     _MetricSpec(
         "fruitspy_natneg_relays",
@@ -76,9 +107,9 @@ _METRICS = (
     ),
     _MetricSpec(
         "fruitspy_discovery_results_total",
-        "Server Browser list results by empty or nonempty result.",
+        "Server Browser list results by empty, nonempty, or rejected result.",
         "counter",
-        (("result", ("empty", "nonempty")),),
+        (("result", ("empty", "nonempty", "rejected")),),
     ),
     _MetricSpec(
         "fruitspy_natneg_outcomes_total",
@@ -96,7 +127,7 @@ _METRICS = (
         "fruitspy_relay_events_total",
         "Gameplay relay lifecycle events.",
         "counter",
-        (("event", ("activated", "established", "closed", "unavailable")),),
+        (("event", ("activated", "ready", "established", "closed", "unavailable")),),
     ),
     _MetricSpec(
         "fruitspy_relay_packets_total",

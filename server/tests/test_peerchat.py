@@ -133,6 +133,18 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
             self.assertIn("fruitspy_peerchat_rooms 1", metrics)
             self.assertNotIn("private-player", metrics)
             self.assertNotIn("private-room", metrics)
+            self.assertIn(
+                'fruitspy_peerchat_events_total{event="connected"} 1',
+                metrics,
+            )
+            self.assertIn(
+                'fruitspy_peerchat_events_total{event="registered"} 1',
+                metrics,
+            )
+            self.assertIn(
+                'fruitspy_peerchat_events_total{event="joined"} 1',
+                metrics,
+            )
 
             await client.send("PART #private-room :Leaving")
             await client.read_until("PART #private-room")

@@ -114,6 +114,15 @@ The unified configuration includes the checked-in safety limits; operators shoul
 
 Rejected connections and protocol events use stable `service=... event=...` fields. Verbose logs omit PeerChat message bodies, nicknames, quit reasons, and raw Server Browser frames. Network-controlled fields that remain operationally necessary are capped at 256 emitted characters; backslashes, line breaks, terminal controls, Unicode format controls, and non-ASCII separators are escaped before interpolation. Source addresses remain available for abuse diagnosis and should be retained only as long as operationally necessary.
 
+For one controlled game attempt, capture aggregate counters immediately before launching the clients and compare them afterward:
+
+```text
+python -m fruitspy.diagnostics capture fruitspy-before.json
+python -m fruitspy.diagnostics compare fruitspy-before.json --game-result passed
+```
+
+Use `--game-result failed` when gameplay did not complete. The comparison reports the Availability, QR registration, PeerChat, discovery, NatNeg, and direct/relay boundaries independently, followed by any admission or protocol rejection deltas. A failed game after a successful direct report, or after relay forwarding with zero drops, is classified beyond the FruitSpy server boundary. Delete the temporary snapshot after recording the aggregate result.
+
 Channel-limit rejections return IRC numeric `405`; key updates that would exceed a collection return numeric `263` and apply no partial changes. Existing keys remain updateable at capacity. Structured `collection_limit_rejected` events identify the bounded resource without logging key contents.
 
 Command-budget exhaustion returns numeric `263` and disconnects the offending PeerChat client before additional buffered commands can run. State-creation exhaustion returns `263` without disconnecting; the rejected command makes no partial change, while updates to existing state remain available.

@@ -323,10 +323,15 @@ class ServerBrowserServer:
         accepted_query_games = {self.config.game.name, f"{self.config.game.name}am"}
         if query_game not in accepted_query_games or client_game != self.config.game.name:
             LOG.warning(
-                "Server Browser game mismatch source=%s query_match=%s client_match=%s",
+                "service=server_browser event=game_rejected source=%s "
+                "query_match=%s client_match=%s",
                 source_ip,
                 query_game in accepted_query_games,
                 client_game == self.config.game.name,
+            )
+            self.metrics.increment(
+                "fruitspy_discovery_results_total",
+                result="rejected",
             )
             return b"Query Error: Invalid gamename or clientname\x00", None, None
         fields = _field_names(field_list)
@@ -352,7 +357,8 @@ class ServerBrowserServer:
             result="nonempty" if server_count else "empty",
         )
         LOG.info(
-            "Server Browser query source=%s fields=%d groups=%s push=%s servers=%d",
+            "service=server_browser event=query source=%s fields=%d groups=%s "
+            "push=%s servers=%d",
             source_ip,
             len(fields),
             bool(options & SEND_GROUPS),
@@ -380,7 +386,7 @@ class ServerBrowserServer:
             None,
         )
         LOG.info(
-            "Server Browser info query host=%s port=%d found=%s",
+            "service=server_browser event=info_query host=%s port=%d found=%s",
             host,
             port,
             server is not None,
@@ -422,7 +428,8 @@ class ServerBrowserServer:
         finally:
             relay.close()
         LOG.info(
-            "Server Browser relayed message browser_endpoint=%s source=%s bytes=%d",
+            "service=server_browser event=message_relayed browser_endpoint=%s "
+            "source=%s bytes=%d",
             (host, port),
             server.source,
             len(payload),

@@ -231,6 +231,40 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
             second_packets.append(packet)
         self.assertEqual(first_connect[7], NN_CONNECT)
         self.assertIn(NN_CONNECT, [packet[7] for packet in second_packets])
+        metrics = self.state.metrics.render().decode("utf-8")
+        self.assertIn(
+            'fruitspy_qr_events_total{event="availability_accepted"} 1',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_qr_events_total{event="challenge_issued"} 1',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_qr_events_total{event="registered"} 1',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_discovery_results_total{result="nonempty"} 1',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_natneg_session_events_total{event="created"} 1',
+            metrics,
+        )
+        self.assertIn(
+            'fruitspy_natneg_session_events_total{event="paired"} 1',
+            metrics,
+        )
+        peerchat_metrics = self.chat_service.metrics.render().decode("utf-8")
+        self.assertIn(
+            'fruitspy_peerchat_events_total{event="registered"} 2',
+            peerchat_metrics,
+        )
+        self.assertIn(
+            'fruitspy_peerchat_events_total{event="joined"} 2',
+            peerchat_metrics,
+        )
 
     async def test_push_updates_break_simultaneous_same_egress_host_race(self) -> None:
         browsers = []

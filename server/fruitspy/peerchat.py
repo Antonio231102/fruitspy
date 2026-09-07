@@ -103,6 +103,7 @@ class PeerChatServer:
             client.connection_id,
             client.host,
         )
+        self.metrics.increment("fruitspy_peerchat_events_total", event="connected")
         try:
             await client.run()
         except (ConnectionError, asyncio.IncompleteReadError):
@@ -342,6 +343,15 @@ class PeerChatClient:
         await self.numeric(375, ":- Message of the day -")
         await self.numeric(372, ":- Fruit Ninja LAN multiplayer service")
         await self.numeric(376, ":End of MOTD command")
+        LOG.info(
+            "service=peerchat event=registered connection=%s source=%s",
+            self.connection_id,
+            self.host,
+        )
+        self.server.metrics.increment(
+            "fruitspy_peerchat_events_total",
+            event="registered",
+        )
 
     async def cmd_ping(self, params: str) -> None:
         await self.send(f"PONG :{params.lstrip(':')}")
@@ -434,6 +444,18 @@ class PeerChatClient:
         if first:
             channel.operators.add(folded_nick)
         self.channels.add(folded_channel)
+        if not is_member:
+            LOG.info(
+                "service=peerchat event=room_joined connection=%s source=%s "
+                "participants=%d",
+                self.connection_id,
+                self.host,
+                len(channel.users),
+            )
+            self.server.metrics.increment(
+                "fruitspy_peerchat_events_total",
+                event="joined",
+            )
         await self._broadcast(channel, f":{self.prefix} JOIN :{channel.name}")
         if first:
             await self._broadcast(channel, f":s MODE {channel.name} +o {self.nick}")
@@ -772,4 +794,8 @@ class PeerChatClient:
             "service=peerchat event=disconnected connection=%s source=%s",
             self.connection_id,
             self.host,
+        )
+        self.server.metrics.increment(
+            "fruitspy_peerchat_events_total",
+            event="disconnected",
         )

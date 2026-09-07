@@ -128,6 +128,14 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
                 addr,
                 status == 0,
             )
+            self.metrics.increment(
+                "fruitspy_qr_events_total",
+                event=(
+                    "availability_accepted"
+                    if status == 0
+                    else "availability_rejected"
+                ),
+            )
             return self._bounded_response(data, availability_response(status), addr)
         if self.drain.is_draining and packet_type in {
             PACKET_HEARTBEAT,
@@ -196,19 +204,22 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         keys = parse_qr_server_keys(data)
         if keys.get("statechanged") == "2":
             self.state.remove_server(addr)
-            LOG.info("QR server removed source=%s", addr)
+            LOG.info("service=qr event=server_removed source=%s", addr)
+            self.metrics.increment("fruitspy_qr_events_total", event="removed")
             return None
         game_name = keys.get("gamename")
         accepted_games = {self.config.game.name, f"{self.config.game.name}am"}
         if game_name not in accepted_games:
             LOG.warning("service=qr event=game_rejected source=%s", addr)
+            self.metrics.increment("fruitspy_qr_events_total", event="game_rejected")
             return None
         server = self.state.report_server(addr, instance_key, keys)
         if server.registered:
             return None
         alphabet = string.ascii_letters + string.digits
         server.challenge = "".join(secrets.choice(alphabet) for _ in range(20))
-        LOG.info("QR challenge source=%s keys=%d", addr, len(keys))
+        LOG.info("service=qr event=challenge_issued source=%s keys=%d", addr, len(keys))
+        self.metrics.increment("fruitspy_qr_events_total", event="challenge_issued")
         return (
             QR_MAGIC
             + bytes((PACKET_CHALLENGE,))
@@ -226,12 +237,16 @@ class AvailabilityQRProtocol(asyncio.DatagramProtocol):
         response, _ = _read_cstring(data, 5)
         expected = gsseckey(server.challenge, self.config.game.secret_key)
         if not response.isascii() or not secrets.compare_digest(response, expected):
-            LOG.warning("invalid QR challenge response from %s", addr)
+            LOG.warning("service=qr event=proof_rejected source=%s", addr)
+            self.metrics.increment("fruitspy_qr_events_total", event="proof_rejected")
             return None
+        first_registration = not server.registered
         self.state.register_server(addr)
         LOG.info(
-            "QR server registered source=%s browser_endpoint=%s",
+            "service=qr event=server_registered source=%s browser_endpoint=%s",
             addr,
             server.browser_endpoint(),
         )
+        if first_registration:
+            self.metrics.increment("fruitspy_qr_events_total", event="registered")
         return QR_MAGIC + bytes((PACKET_CLIENT_REGISTERED,)) + server.instance_key

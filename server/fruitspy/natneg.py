@@ -271,6 +271,11 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 bool(use_game_port),
                 local_endpoint,
             )
+            if event == "session_created":
+                self.metrics.increment(
+                    "fruitspy_natneg_session_events_total",
+                    event="created",
+                )
             responses = [(self._with_type(data, NN_INIT_ACK), addr)]
             schedule_fallback = False
             if 0 in session.peers and 1 in session.peers:
@@ -286,6 +291,10 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                         "service=natneg event=peers_paired session=%s peers=%s",
                         cookie.hex(),
                         [peer.address for peer in session.peers.values()],
+                    )
+                    self.metrics.increment(
+                        "fruitspy_natneg_session_events_total",
+                        event="paired",
                     )
             responses = self._bounded_responses(data, responses, addr)
             if responses and schedule_fallback:
@@ -684,6 +693,7 @@ class NatNegProtocol(asyncio.DatagramProtocol):
                 cookie.hex(),
                 round((now - relay.started_at) * 1000),
             )
+            self.metrics.increment("fruitspy_relay_events_total", event="ready")
         return True
 
     def _forward_relay(self, data: bytes, addr: Address, now: float) -> bool:

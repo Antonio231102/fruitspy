@@ -19,6 +19,7 @@ dist/
 *.pcapng
 fruitspy-screen.png
 fruitspy-window.xml
+fruitspy-before.json
 
 # Local configuration overrides and secrets
 .env
