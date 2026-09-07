@@ -1,7 +1,8 @@
-from argparse import ArgumentTypeError
+from argparse import ArgumentParser, ArgumentTypeError, Namespace
 from dataclasses import replace
 from pathlib import Path
 from unittest import mock
+import io
 import shutil
 import struct
 import subprocess
@@ -18,7 +19,9 @@ from patch_apk import (
     AndroidTools,
     SigningMaterial,
     align_sign_and_verify,
+    MAX_SERVER_HOST_BYTES,
     ensure_signing_material,
+    collect_arguments,
     inject_payload,
     parse_server_host,
     patch_apk,
@@ -139,6 +142,55 @@ class ApkPatchTests(unittest.TestCase):
             parse_server_host("bad_name.example")
         with self.assertRaises(ArgumentTypeError):
             parse_server_host("2001:db8::1")
+        self.assertEqual(MAX_SERVER_HOST_BYTES, 18)
+
+    def test_noninteractive_mode_requires_explicit_server_host(self) -> None:
+        parser = ArgumentParser()
+        args = Namespace(
+            source=Path("clean.apk"),
+            output=Path("patched.apk"),
+            server_host=None,
+            non_interactive=True,
+            no_report=True,
+            report=None,
+        )
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            with self.assertRaises(SystemExit):
+                collect_arguments(parser, args)
+        self.assertIn("--server-host is required", stderr.getvalue())
+
+    def test_interactive_prompt_discloses_fixes_and_has_no_endpoint_default(self) -> None:
+        parser = ArgumentParser()
+        args = Namespace(
+            source=None,
+            output=None,
+            server_host=None,
+            non_interactive=False,
+            no_report=True,
+            report=None,
+        )
+        with mock.patch("patch_apk.sys.stdin.isatty", return_value=True):
+            with mock.patch(
+                "builtins.input",
+                side_effect=["clean.apk", "fn.example.net"],
+            ) as user_input:
+                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+                    source, output, server_host, report = collect_arguments(
+                        parser,
+                        args,
+                    )
+
+        notice = stdout.getvalue()
+        self.assertIn("slow-motion fix", notice)
+        self.assertIn("No FruitSpy server address is built in", notice)
+        self.assertIn("DNS names are limited to 18 ASCII characters", notice)
+        self.assertEqual(source, Path("clean.apk"))
+        self.assertEqual(output, Path("clean - FruitSpy.apk"))
+        self.assertEqual(server_host, "fn.example.net")
+        self.assertIsNone(report)
+        endpoint_prompt = user_input.call_args_list[1].args[0]
+        self.assertIn("required", endpoint_prompt)
+        self.assertIn("maximum 18 ASCII characters", endpoint_prompt)
 
     def test_endpoint_patch_covers_every_abi(self) -> None:
         for abi in TARGET_ABIS:

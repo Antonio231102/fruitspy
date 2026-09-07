@@ -33,6 +33,7 @@ GAMESPY_HOSTS = (
     b"natneg2.gamespy.com",
     b"natneg3.gamespy.com",
 )
+MAX_SERVER_HOST_BYTES = min(len(host) for host in GAMESPY_HOSTS) - 1
 NATNEG_RESOLVER_PATCHES = {
     "armeabi": (
         (0x1A7F9C, bytes.fromhex("00c08de5"), bytes.fromhex("0c60a0e1"), "load natneg2 literal"),
@@ -188,10 +189,9 @@ def parse_server_host(value: str) -> str:
         )
     ):
         raise argparse.ArgumentTypeError("invalid server DNS name")
-    shortest_literal = min(len(original) for original in GAMESPY_HOSTS)
-    if len(hostname.encode("ascii")) >= shortest_literal:
+    if len(hostname.encode("ascii")) > MAX_SERVER_HOST_BYTES:
         raise argparse.ArgumentTypeError(
-            f"server DNS name must be shorter than {shortest_literal} ASCII bytes"
+            f"server DNS name must be at most {MAX_SERVER_HOST_BYTES} ASCII characters"
         )
     return hostname
 
@@ -968,6 +968,16 @@ def collect_arguments(
     args: argparse.Namespace,
 ) -> tuple[Path, Path, str, Path | None]:
     interactive = not args.non_interactive and sys.stdin.isatty()
+    if interactive:
+        print(
+            "This build will include the monotonic-clock slow-motion fix "
+            "for all three packaged ABIs."
+        )
+        print("No FruitSpy server address is built in; you must supply one.")
+        print(
+            f"Warning: DNS names are limited to {MAX_SERVER_HOST_BYTES} "
+            "ASCII characters. IPv4 addresses are also accepted."
+        )
     if args.source is None:
         if not interactive:
             parser.error("source is required in non-interactive mode")
@@ -981,7 +991,10 @@ def collect_arguments(
         while True:
             try:
                 server_host = parse_server_host(
-                    prompt_value("FruitSpy server IPv4 address or short DNS name: ")
+                    prompt_value(
+                        "FruitSpy server IPv4 address or DNS name "
+                        f"(required; DNS maximum {MAX_SERVER_HOST_BYTES} ASCII characters): "
+                    )
                 )
                 break
             except argparse.ArgumentTypeError as exc:
@@ -1004,13 +1017,21 @@ def collect_arguments(
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Build a Fruit Ninja 1.7.6 APK with the monotonic-clock fix and "
-            "FruitSpy endpoint patch for all three packaged ABIs."
+            "Build a Fruit Ninja 1.7.6 APK with the monotonic-clock "
+            "slow-motion fix and a user-supplied FruitSpy endpoint patch "
+            "for all three packaged ABIs. No server address is predefined."
         )
     )
     parser.add_argument("source", nargs="?", type=Path)
     parser.add_argument("output", nargs="?", type=Path)
-    parser.add_argument("--server-host", type=parse_server_host)
+    parser.add_argument(
+        "--server-host",
+        type=parse_server_host,
+        help=(
+            "required server IPv4 address or DNS name; there is no default "
+            f"and DNS names are limited to {MAX_SERVER_HOST_BYTES} ASCII characters"
+        ),
+    )
     parser.add_argument(
         "--unsigned",
         action="store_true",
@@ -1046,7 +1067,10 @@ def main() -> int:
 
     mode = "unsigned" if args.unsigned else "signed and verified"
     print(f"Created {mode} APK: {output}")
-    print(f"Patched {len(manifest['libraries'])} ABI libraries.")
+    print(
+        "Bundled the monotonic-clock slow-motion fix and patched "
+        f"{len(manifest['libraries'])} ABI libraries."
+    )
     if report is not None:
         print(f"Manifest: {report}")
     signing = manifest.get("signing")
