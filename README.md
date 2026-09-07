@@ -98,7 +98,7 @@ The unified configuration includes the checked-in safety limits; operators shoul
 | `nat_sessions` | 4096 | Hard bound on concurrent NatNeg cookie sessions |
 | `relay.policy` | `auto` | Direct-first negotiation with bounded fallback; set `direct` to disable relay allocation |
 | `relay.fallback_seconds` | 3 | Delay before an unconfirmed direct path moves to relay |
-| `relay.session_seconds` | 900 | Hard lifetime of each relay allocation |
+| `relay.session_seconds` | 900 | Idle lifetime of each relay allocation; authenticated traffic refreshes it |
 | `relay.packet_bytes` | 4096 | Maximum forwarded UDP payload |
 | `relay.bytes_per_second` | 262144 | Per-endpoint relay byte-token refill rate |
 | `relay.byte_burst` | 524288 | Per-endpoint initial and maximum byte burst |
@@ -118,7 +118,7 @@ Channel-limit rejections return IRC numeric `405`; key updates that would exceed
 
 Command-budget exhaustion returns numeric `263` and disconnects the offending PeerChat client before additional buffered commands can run. State-creation exhaustion returns `263` without disconnecting; the rejected command makes no partial change, while updates to existing state remain available.
 
-The state sweeper removes expired QR2 registrations and NatNeg setup sessions on the configured cadence even when no client request arrives. Expired registered hosts trigger normal Server Browser deletion updates. Authenticated relay traffic refreshes its NatNeg setup session when present, while the relay allocation retains its independent activity and hard-TTL lifecycle.
+The state sweeper removes expired QR2 registrations and NatNeg setup sessions on the configured cadence even when no client request arrives. Expired registered hosts trigger normal Server Browser deletion updates. Authenticated traffic from either bound relay endpoint refreshes both its NatNeg setup session, when present, and the relay's independent idle deadline. Unauthenticated traffic cannot extend that deadline. Idle relays close after `relay.session_seconds`; the concurrent relay cap remains a hard resource bound.
 
 QR2 and NatNeg share one global packet budget and one per-source table, so moving traffic between the two UDP ports cannot bypass admission. A source that continues transmitting after exhausting its burst is temporarily banned across both listeners after `udp_source_violation_burst` consecutive rejections. An accepted packet resets that violation run. Global exhaustion does not penalize individual sources. Structured `udp_admission_rejected` events identify global limits, source limits, newly started bans, active bans, and source-table capacity without parsing packet contents.
 
@@ -161,7 +161,7 @@ cd server
 python -m unittest
 ```
 
-The suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, hard TTL, byte and packet limits, global relay capacity, and deterministic APK patching.
+The suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, activity-aware relay idle expiry, byte and packet limits, global relay capacity, and deterministic APK patching.
 
 The fuzz regressions use a deterministic mutation corpus against QR2 and NatNeg datagrams, Server Browser frames and filters, and encrypted PeerChat commands. The default case count keeps the complete suite fast:
 
@@ -191,6 +191,14 @@ python -m unittest tests.test_failure_modes
 ```
 
 It verifies retransmission recovery, state cleanup, nickname reuse, listener reconnection, relay isolation, process-local state reset, and four-protocol health after restart. The process test binds temporary loopback ports and does not restart or send fault traffic to the public service.
+
+The opt-in relay lifetime probe establishes an authenticated two-endpoint relay, reports the relay path as successful from both peers, and exchanges opaque traffic in both directions every ten seconds for just over 15 minutes:
+
+```text
+python -m tests.relay_ttl_soak
+```
+
+It is intentionally excluded from test discovery because its wall-clock duration is the behavior under test. Run it only against a controlled service with no active players. The accelerated integration regression verifies the same deadline transition and confirms that an allocation closes after one full configured interval without authenticated endpoint traffic.
 
 ## Online play
 

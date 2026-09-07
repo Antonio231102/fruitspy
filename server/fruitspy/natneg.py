@@ -633,11 +633,9 @@ class NatNegProtocol(asyncio.DatagramProtocol):
         )
         self._relays[cookie] = relay
         self._relays_empty.clear()
-        self._relay_expirations[cookie] = asyncio.get_running_loop().call_later(
-            self.config.relay.session_seconds,
-            self._finish_relay,
+        self._schedule_relay_idle_expiration(
             cookie,
-            "ttl",
+            self.config.relay.session_seconds,
         )
         for index, endpoint in relay.endpoints.items():
             self._relay_by_address[endpoint.address] = (cookie, index)
@@ -776,13 +774,38 @@ class NatNegProtocol(asyncio.DatagramProtocol):
             )
         return True
 
+    def _schedule_relay_idle_expiration(
+        self,
+        cookie: bytes,
+        delay: float,
+    ) -> None:
+        self._relay_expirations[cookie] = asyncio.get_running_loop().call_later(
+            delay,
+            self._expire_relay_after_idle,
+            cookie,
+        )
+
+    def _expire_relay_after_idle(self, cookie: bytes) -> None:
+        relay = self._relays.get(cookie)
+        if relay is None:
+            self._relay_expirations.pop(cookie, None)
+            return
+        remaining = self.config.relay.session_seconds - (
+            time.monotonic() - relay.last_seen
+        )
+        if remaining > 0:
+            self._schedule_relay_idle_expiration(cookie, remaining)
+            return
+        self._relay_expirations.pop(cookie, None)
+        self._finish_relay(cookie, "idle_timeout")
+
     def _expire_relays(self, now: float, *, force: bool = False) -> None:
         if not force and now < self._next_relay_expiry:
             return
         self._next_relay_expiry = now + 1
         lifetime = self.config.relay.session_seconds
         for cookie, relay in list(self._relays.items()):
-            if now - relay.last_seen > lifetime:
+            if now - relay.last_seen >= lifetime:
                 self._finish_relay(cookie, "idle_timeout")
 
     def _finish_relay(self, cookie: bytes, reason: str) -> None:

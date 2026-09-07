@@ -111,7 +111,7 @@ async def run_server(config: ServerConfig) -> None:
         config.metrics.port,
     )
     LOG.info(
-        "Relay policy=%s fallback=%.1fs ttl=%ds drain=%ds",
+        "Relay policy=%s fallback=%.1fs idle=%ds drain=%ds",
         config.relay.policy,
         config.relay.fallback_seconds,
         config.relay.session_seconds,

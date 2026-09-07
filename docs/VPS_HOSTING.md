@@ -131,7 +131,7 @@ In the VPS provider's firewall or security-group control panel, allow:
 
 Keep SSH restricted to your administrative source address when possible. During a controlled alpha, restrict FruitSpy to the known tester networks when their addresses are stable. Mobile carrier addresses can change and might require a temporary wider rule.
 
-Do not open gameplay port 6500 on the VPS. Direct-capable clients send gameplay peer-to-peer. Automatic fallback reuses the existing UDP 27901 listener, so its packet-size, byte-rate, TTL, and session-cap limits apply to relayed gameplay.
+Do not open gameplay port 6500 on the VPS. Direct-capable clients send gameplay peer-to-peer. Automatic fallback reuses the existing UDP 27901 listener, so its packet-size, byte-rate, idle-timeout, and session-cap limits apply to relayed gameplay.
 
 ## 6. Configure the Linux firewall
 

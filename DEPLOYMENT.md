@@ -61,13 +61,15 @@ Set `relay.policy` to `direct` to prohibit relay allocations. Automatic fallback
 | Setting | Checked-in value | Boundary |
 | --- | ---: | --- |
 | `fallback_seconds` | 3 | Direct-attempt window before fallback |
-| `session_seconds` | 900 | Hard allocation TTL; activity does not extend it |
+| `session_seconds` | 900 | Relay inactivity timeout; authenticated endpoint traffic refreshes it |
 | `packet_bytes` | 4096 | Maximum relayed UDP payload |
 | `bytes_per_second` | 262144 | Per-endpoint byte-token refill rate |
 | `byte_burst` | 524288 | Per-endpoint burst ceiling |
 | `sessions` | 1024 | Global active relay cap |
 
 Relay payloads are opaque. FruitSpy does not inspect or modify `hbgs` or gameplay messages.
+
+`session_seconds` is an idle deadline, not an absolute match deadline. Traffic is accepted only from the two endpoints that completed the cookie-bearing relay handshake, and accepted traffic from either endpoint refreshes the deadline. This lets an active game continue beyond 15 minutes without allowing unrelated sources to retain its allocation. The 1,024-session cap, packet limit, and per-endpoint byte budgets remain hard bounds.
 
 ## Firewall
 
@@ -201,3 +203,5 @@ Remove the four FruitSpy firewall rules and DNS record after the test window. Di
 ## Relay implementation result
 
 The evidence gate is closed. FruitSpy now attempts direct traversal first, switches only unconfirmed sessions to the UDP 27901 relay after a bounded timeout, and leaves the proven LAN path direct. The relay accepts opaque traffic only after both server-observed endpoints return the expected cookie-bearing NatNeg ping.
+
+The relay lifetime gate found that the original timer was absolute and would close active gameplay at 900 seconds. `session_seconds` now measures authenticated endpoint inactivity instead. An accelerated regression verifies active forwarding across the original deadline, rejection of an unauthenticated keepalive, and cleanup after one quiet interval. The production service sustained 92 bidirectional rounds over 905.005 seconds, forwarding 184 packets with zero drops; its final periodic record at 900.996 seconds crossed the former absolute deadline.

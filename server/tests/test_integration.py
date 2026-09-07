@@ -571,13 +571,13 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(TimeoutError):
             await self.receive_udp_type(first, NN_CONNECT_PING, 0.15)
 
-    async def test_relay_has_hard_session_ttl(self) -> None:
+    async def test_active_relay_survives_ttl_and_expires_after_inactivity(self) -> None:
         self.nat_protocol.config = replace(
             self.config,
             relay=replace(
                 self.config.relay,
                 fallback_seconds=0.1,
-                session_seconds=0.1,
+                session_seconds=0.5,
             ),
         )
         first, second = await self.pair_nat_clients(b"TTL1")
@@ -586,10 +586,35 @@ class SyntheticLANFlowTests(unittest.IsolatedAsyncioTestCase):
         loop = asyncio.get_running_loop()
         await loop.sock_sendto(first, first_ping, ("127.0.0.1", self.nat_port))
         await loop.sock_sendto(second, second_ping, ("127.0.0.1", self.nat_port))
-        await asyncio.sleep(0.12)
-        await loop.sock_sendto(first, b"expired", ("127.0.0.1", self.nat_port))
+
+        await asyncio.sleep(0.3)
+        await loop.sock_sendto(first, b"first-keepalive", ("127.0.0.1", self.nat_port))
+        self.assertEqual(
+            (await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 2))[0],
+            b"first-keepalive",
+        )
+        await asyncio.sleep(0.3)
+        self.assertIn(b"TTL1", self.nat_protocol._relays)
+        await loop.sock_sendto(second, b"past-original-ttl", ("127.0.0.1", self.nat_port))
+        self.assertEqual(
+            (await asyncio.wait_for(loop.sock_recvfrom(first, 4096), 2))[0],
+            b"past-original-ttl",
+        )
+        outsider = self.udp_socket()
+
+        with self.assertLogs("fruitspy.natneg", level="INFO") as captured:
+            await asyncio.sleep(0.3)
+            await loop.sock_sendto(
+                outsider,
+                b"unauthenticated-keepalive",
+                ("127.0.0.1", self.nat_port),
+            )
+            await asyncio.sleep(0.25)
+        self.assertNotIn(b"TTL1", self.nat_protocol._relays)
+        self.assertIn("reason=idle_timeout", "\n".join(captured.output))
+        await loop.sock_sendto(second, b"expired", ("127.0.0.1", self.nat_port))
         with self.assertRaises(TimeoutError):
-            await asyncio.wait_for(loop.sock_recvfrom(second, 4096), 0.05)
+            await asyncio.wait_for(loop.sock_recvfrom(first, 4096), 0.05)
 
     async def test_relay_session_capacity_is_global(self) -> None:
         self.nat_protocol.config = replace(
