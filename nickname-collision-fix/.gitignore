@@ -1,0 +1,8 @@
+# Local proprietary inputs, generated APKs, disassemblies, and emulation dependencies.
+input/
+build/
+*.so
+*.pcap
+*.pcapng
+__pycache__/
+*.pyc
