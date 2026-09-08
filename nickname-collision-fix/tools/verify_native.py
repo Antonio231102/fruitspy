@@ -1,8 +1,9 @@
-"""Execute the real patched callback/getter/host lookup in Unicorn, not Python replacements.
+"""Execute real nickname request/callback/host paths in Unicorn.
 
-Only strncpy/strcasecmp libc imports and a one-bucket fixture hash callback are
-provided by the harness. Player selection, room/local-host checks, callback
-publication, and the nickname helper execute the APK's native machine code.
+Only strncpy/strcasecmp libc imports, a one-bucket fixture hash callback, and
+observation at the SDK connection boundary are supplied by the harness. Preferred
+name restoration, the native setter/string routines, callback publication, and
+host selection execute the APK's native machine code.
 """
 from __future__ import annotations
 
@@ -67,6 +68,23 @@ class Machine:
         target = (base.read_u32(data, displacement_offset) + self.patch.callback_address_base) & 0xFFFFFFFF
         self.callback = load_base + target
         self.published_names = []
+        offset = self.patch.request_hook_offset
+        if self.is_x86:
+            assert data[offset] == 0xE8
+            target = offset + 5 + struct.unpack_from("<i", data, offset + 1)[0]
+        else:
+            instruction = base.read_u32(data, offset)
+            assert instruction >> 24 == 0xEB
+            displacement = instruction & 0xFFFFFF
+            if displacement & 0x800000:
+                displacement -= 1 << 24
+            target = offset + 8 + displacement * 4
+        self.request_entry = load_base + target
+        self.requested_names = []
+        self.uc.hook_add(
+            UC_HOOK_CODE, self.external,
+            begin=load_base + self.patch.peer_connect, end=load_base + self.patch.peer_connect,
+        )
         self.uc.hook_add(UC_HOOK_CODE, self.external, begin=load_base + self.strncpy, end=load_base + self.strncpy)
         self.uc.hook_add(UC_HOOK_CODE, self.external, begin=load_base + self.strcasecmp, end=load_base + self.strcasecmp)
         self.uc.hook_add(UC_HOOK_CODE, self.external, begin=HASH, end=HASH)
@@ -90,11 +108,16 @@ class Machine:
     def argument(self, index: int) -> int:
         if self.is_x86:
             return self.read_word(self.uc.reg_read(self.sp) + 4 * (index + 1))
-        return self.uc.reg_read(getattr(arm, f"UC_ARM_REG_R{index}"))
+        if index < 4:
+            return self.uc.reg_read(getattr(arm, f"UC_ARM_REG_R{index}"))
+        return self.read_word(self.uc.reg_read(self.sp) + 4 * (index - 4))
 
     def external(self, uc, address, size, user_data) -> None:
         if address == HASH:
             result = 0  # Valid hash for this deliberately single-bucket table.
+        elif address == self.load_base + self.patch.peer_connect:
+            self.requested_names.append(self.string(self.argument(1)))
+            result = 0
         elif address == self.load_base + self.strncpy:
             destination, source, count = (self.argument(n) for n in range(3))
             text = self.string(source)
@@ -123,8 +146,10 @@ class Machine:
         if self.is_x86:
             self.uc.mem_write(entry_sp, struct.pack("<" + "I" * (len(args) + 1), STOP, *args))
         else:
-            for index, value in enumerate(args):
+            for index, value in enumerate(args[:4]):
                 self.uc.reg_write(getattr(arm, f"UC_ARM_REG_R{index}"), value)
+            for index, value in enumerate(args[4:]):
+                self.word(entry_sp + 4 * index, value)
             self.uc.reg_write(arm.UC_ARM_REG_LR, STOP)
         self.uc.emu_start(address, STOP, count=100000)
         assert self.uc.reg_read(self.pc) == STOP, "native execution did not return"
@@ -133,10 +158,15 @@ class Machine:
             assert self.uc.reg_read(reg) == 0x11110000 + index, "callee-saved register corrupted"
         return self.uc.reg_read(self.result)
 
-    def prepare(self, requested: bytes, accepted: bytes, hosting: bool, other_is_host: bool = False) -> None:
+    def prepare(
+        self, requested: bytes, accepted: bytes, hosting: bool,
+        other_is_host: bool = False, *, reset_provider: bool = True,
+    ) -> None:
         assert len(requested) <= 63 and len(accepted) <= 63
-        self.uc.mem_write(PROVIDER, b"\xa5" * 0x200)
-        self.uc.mem_write(PROVIDER + 0xA4, requested + b"\0")
+        if reset_provider:
+            self.uc.mem_write(PROVIDER, b"\xa5" * 0x200)
+            self.uc.mem_write(PROVIDER + 0xA4, requested + b"\0")
+            self.configure_nickname(requested)
         self.word(PROVIDER + 0x88, PEER)
         self.uc.mem_write(PEER + 4, accepted.ljust(64, b"\0"))
         self.word(PEER + 0x48, 1)  # Connected.
@@ -174,6 +204,19 @@ class Machine:
         assert self.read_word(self.success) == success, "original callback result changed"
         assert self.read_word(self.connecting) == 0, "original callback did not finish"
 
+    def configure_nickname(self, nickname: bytes) -> None:
+        assert len(nickname) <= 16
+        self.uc.mem_write(self.load_base + self.patch.configured_nick, nickname.ljust(17, b"\0"))
+
+    def request(self) -> bytes:
+        before = bytes(self.uc.mem_read(PROVIDER, 0x200))
+        preferred = self.string(self.load_base + self.patch.configured_nick)
+        self.call(self.request_entry, PEER, PROVIDER + 0xA4, 0, STOP, self.callback, PROVIDER, 0)
+        after = bytes(self.uc.mem_read(PROVIDER, 0x200))
+        assert before[:0xA4] == after[:0xA4] and before[0xE4:] == after[0xE4:]
+        assert self.string(self.load_base + self.patch.configured_nick) == preferred
+        return self.requested_names[-1]
+
 
 def verify_abi(clean: bytes, abi: str) -> list[str]:
     baseline, _ = base.patch_clock_library(clean, base.CLOCK_PATCHES[abi])
@@ -184,6 +227,15 @@ def verify_abi(clean: bytes, abi: str) -> list[str]:
         original.prepare(b"Alex", b"Alex.42", True)
         original.connect()
         assert not original.is_host(), "baseline no longer reproduces renamed-host stall"
+        # The previous callback-only patch fixed hosting but reused the accepted
+        # alias as the next requested name. Keep that distinct baseline visible.
+        callback_only = bytearray(corrected)
+        patch = PATCHES[abi]
+        callback_only[patch.request_hook_offset:patch.request_hook_offset + len(patch.request_hook_before)] = patch.request_hook_before
+        sticky = Machine(bytes(callback_only), abi, load_base)
+        sticky.prepare(b"Alex", b"Alex.42", True)
+        sticky.connect()
+        assert sticky.request() == b"Alex.42", "previous patch no longer reproduces sticky nickname"
         fixed = Machine(corrected, abi, load_base)
         for name, requested, accepted, hosting, other_host in (
             ("renamed host", b"Alex", b"Alex.42", True, False),
@@ -196,13 +248,29 @@ def verify_abi(clean: bytes, abi: str) -> list[str]:
             assert fixed.is_host() == hosting, name
             assert fixed.published_names == [accepted], "success published before identity synchronization"
             passed.append(f"{load_base:#x}: {name}")
-        # A provider surviving reconnect must not retain the previous accepted suffix.
+        fixed.prepare(b"Alex", b"Alex.42", True)
+        assert fixed.request() == b"Alex"
+        fixed.connect()
+        assert fixed.is_host()
+        # Keep this provider alive through successive collision and free-name
+        # connections: do not manufacture the requested name from the SDK result.
         for accepted in (b"Alex.7", b"Alex"):
-            previous = fixed.string(PROVIDER + 0xA4)
-            fixed.prepare(previous, accepted, True)
+            assert fixed.request() == b"Alex", "reconnect requested a cached suffix"
+            fixed.prepare(b"Alex", accepted, True, reset_provider=False)
             fixed.connect()
             assert fixed.is_host() and fixed.published_names == [accepted]
-        passed.append(f"{load_base:#x}: reconnect and suffix removal")
+            assert fixed.string(load_base + patch.configured_nick) == b"Alex"
+        passed.append(f"{load_base:#x}: preferred-name reconnect and suffix removal")
+        fixed.configure_nickname(b"Beth.12")
+        assert fixed.request() == b"Beth.12", "configured numeric suffix was stripped"
+        fixed.prepare(b"Beth.12", b"Beth.12.8", True, reset_provider=False)
+        fixed.connect()
+        assert fixed.is_host() and fixed.request() == b"Beth.12"
+        passed.append(f"{load_base:#x}: edited preferred name with intentional suffix")
+        fixed.prepare(b"nick123", b"nick123", True)
+        fixed.configure_nickname(b"")
+        assert fixed.request() == b"nick123", "empty setting replaced native-generated name"
+        passed.append(f"{load_base:#x}: native-generated name with empty setting")
         for name, success, provider, peer, connected in (
             ("failed connection", 0, PROVIDER, PEER, 1),
             ("null provider", 1, 0, PEER, 1),
@@ -228,7 +296,7 @@ def main() -> int:
     with zipfile.ZipFile(args.source) as apk:
         for abi in PATCHES:
             results[abi] = verify_abi(apk.read(f"lib/{abi}/{base.LIBRARY}"), abi)
-            print(f"{abi}: baseline stall reproduced; {len(results[abi])} corrected native scenarios passed")
+            print(f"{abi}: host stall and sticky reconnect reproduced; {len(results[abi])} corrected native scenarios passed")
     if args.report:
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")

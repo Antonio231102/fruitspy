@@ -27,17 +27,25 @@ This is a client identity defect, not proof that the emulator's private NAT addr
 
 PeerChat enforces case-insensitive nickname uniqueness **among active connections**, not permanent account ownership. Two clients may request the same name; one must retry under a suffix. Synchronizing each provider to its own accepted SDK nickname makes both identities distinct for host selection. It neither evicts the first player nor merges their state.
 
-The native retry limit and random suffix space are unchanged. The correction operates after successful registration; it does not guarantee registration under an exhausted collision space.
+The native retry limit and random suffix space are unchanged. The correction does not guarantee registration under an exhausted collision space.
 
 ### Server contribution, intentionally not changed
 
 `server/fruitspy/peerchat.py` retains registered connections while awaiting `reader.read` without an application-level heartbeat deadline. Network changes can therefore leave original names occupied until TCP detects failure. Better dead-session detection would reduce that trigger but cannot replace client correctness for legitimate collisions. This subproject makes no server changes.
 
+### Follow-up defect: accepted identity became the next preference
+
+The callback-only patch fixed host recognition, but the same provider cache at `0xa4` is also passed to the next `peerConnect`. After a collision, that request therefore reused the accepted suffix even while the configured nickname field still contained the original name. A free server does not shorten a nickname the client explicitly requests.
+
+The configured nickname has separate global storage, populated by the game's settings/load path and limited to 16 characters. The revision reads that storage immediately before a new connection and calls the original provider nickname setter. It retains accepted-name synchronization at successful registration. Thus the provider cache transitions from configured request to accepted session identity and back to the configured request on the next connection; saved settings are never overwritten.
+
 ## Implementation
 
-### Patch point
+### Connection request and success hooks
 
-Redirect the successful-connect callback supplied by the game's anonymous `peerConnect` call to a small helper. Leave the original callback intact and tail-call it after synchronization.
+The anonymous `peerConnect` call is redirected to a request helper. It preserves the original register/stack arguments, calls the game's existing nickname setter with the configured nickname and provider, then tail-calls the original `peerConnect`. The setter leaves the current candidate unchanged if the configured string is empty. This hook does not run during `peerRetryWithNick` or active gameplay.
+
+The successful-connect callback supplied at that same call remains redirected to the accepted-name helper. The original callback is left intact and tail-called after synchronization.
 
 The helper:
 
@@ -47,7 +55,7 @@ The helper:
 4. Restores the callback arguments and callee-saved registers.
 5. Tail-calls the original callback, so the game cannot observe success before the identity is synchronized.
 
-No heap allocations, string formatting, networking, or per-frame work are added. Failed connection publication is unchanged. The final accepted name is copied rather than each retry candidate, which may itself be rejected. Reconnects can replace or remove a previous suffix.
+No heap allocations, string formatting, networking, or per-frame work are added. Failed connection publication is unchanged. Each new connection requests the current configured nickname; collision retries retain the original game's behavior. On success, the final accepted name is copied rather than an unaccepted retry candidate. An intentional suffix in the configured nickname is preserved exactly.
 
 This corrects the shared cached identity rather than bypassing only the failing host test. It does not add a new mid-session renaming feature.
 
@@ -61,7 +69,13 @@ All addresses below are relative to the ELF load base. Hook offsets are file off
 | `armeabi-v7a` | `0x19d934` | `0x19d6c4` | `0x19c64c` | `0x1a95bc` | `0x3a5994` | 92 |
 | `x86` | `0x188d19` | `0x3b22c8` | `0x1875a0` | `0x195500` | `0x3a63e8` | 79 |
 
-The ARM hooks replace a four-byte PC-relative literal. The x86 hook replaces the six-byte `lea` instruction that computes the callback address from the GOT base. Neither changes the nickname-error callback, callback ABI, or original completion routine.
+The ARM callback hook replaces a four-byte PC-relative literal; the x86 callback hook replaces the six-byte `lea` computing its address. The additional request hook replaces the ARM `bl` or x86 `call` at the anonymous connection site. Neither hook changes the nickname-error callback, callback ABI, or original completion routine.
+
+| ABI | Request-call hook | Configured nickname storage | Native nickname setter | Original `peerConnect` | Request helper | Total payload bytes |
+|---|---:|---:|---:|---:|---:|---:|
+| `armeabi` | `0x19d704` | `0x3b1cc8` | `0x19c820` | `0x1ac338` | `0x3a2da8` | 132 |
+| `armeabi-v7a` | `0x19d6d4` | `0x3b55f8` | `0x19c7f0` | `0x1ac308` | `0x3a59f0` | 132 |
+| `x86` | `0x188d72` | `0x3b6fa4` | `0x187910` | `0x198690` | `0x3a6438` | 123 |
 
 The original game host predicates exercised by the regression harness are `0x19c900` (`armeabi`), `0x19c8d0` (`armeabi-v7a`), and `0x187b10` (`x86`).
 
@@ -77,25 +91,28 @@ The shared APK builder/signing routines retain responsibility for removing obsol
 
 ### Native execution: all three ABIs
 
-The reproducible harness in `tools/verify_native.py` executes actual APK machine code under Unicorn. Its player table uses the SDK's original hash-table and array-lookup implementations, a one-bucket fixture hash callback, and libc `strncpy`/`strcasecmp` substitutes. The game host predicate, SDK room/local-host checks, accepted-name getter, helper, and original completion callback are not mocked.
+The reproducible harness in `tools/verify_native.py` executes actual APK machine code under Unicorn. Its player table uses the SDK's original hash-table and array-lookup implementations, a one-bucket fixture hash callback, and libc `strncpy`/`strcasecmp` substitutes. Both helpers, the native nickname setter/string routines, host predicate, accepted-name getter, and original completion callback are not mocked. An SDK connection-boundary observer records the actual requested nickname without performing network I/O.
 
 For each ABI, at load bases `0x10000000` and `0x38000000`:
 
 - The uncorrected callback reproduces the renamed-host failure.
+- The previous callback-only patch reproduces a sticky `Alex.42` request despite configured name `Alex`; this was also reproduced from the actual earlier signed APK's three libraries.
 - The corrected renamed host recognizes itself even while its original nickname belongs to an older title-room player.
 - A renamed joiner does not misidentify itself as the live host that owns its requested original name.
 - An ordinary unsuffixed host remains a host.
 - A 63-byte SDK nickname remains bounded and usable for host lookup.
-- Reconnects update the suffix and subsequently restore the unsuffixed name.
+- A surviving provider requests `Alex` before successive accepted names `Alex.42`, `Alex.7`, and finally free `Alex`, retaining correct host recognition each time.
+- Editing the configured name to `Beth.12` requests that exact value, not the old alias or a suffix-stripped version; a subsequent collision does not overwrite the setting.
+- An empty configured name preserves the game's generated candidate.
 - Failed connection, null provider, null peer, and unavailable getter paths preserve the cached identity and original completion result.
 - Native calls preserve callee-saved registers and stack balance; callback writes are observed to ensure success is published only after synchronization. Adjacent provider bytes remain untouched.
 
 Observed output:
 
 ```text
-armeabi: baseline stall reproduced; 18 corrected native scenarios passed
-armeabi-v7a: baseline stall reproduced; 18 corrected native scenarios passed
-x86: baseline stall reproduced; 18 corrected native scenarios passed
+armeabi: host stall and sticky reconnect reproduced; 22 corrected native scenarios passed
+armeabi-v7a: host stall and sticky reconnect reproduced; 22 corrected native scenarios passed
+x86: host stall and sticky reconnect reproduced; 22 corrected native scenarios passed
 ```
 
 This is native function execution with constructed protocol state, not a live network/concurrency test or a completed Android match.
@@ -103,13 +120,13 @@ This is native function execution with constructed protocol state, not a live ne
 ### Build and artifact checks
 
 - Rebuilding the assembly reproduces all three checked-in payload hashes.
-- Compared with the shared unsigned baseline, only the three `libmortargame.so` ZIP entries change. All other entry bytes and entry ordering remain unchanged.
-- Altered hook bytes and duplicate application are rejected for every ABI.
+- Compared with the previous signed APK, only the three `libmortargame.so` entries and v1 signature metadata change; all ZIP entry names/order and other contents remain unchanged.
+- Altered bytes at either hook and duplicate application are rejected for every ABI.
 - Final library digests match the generated manifest.
-- The signed build targeting `217.154.27.122` has APK SHA-256:
+- The revised signed `FruitSpy-Nickname-Fix-Preferred.apk` targeting `217.154.27.122` has APK SHA-256:
 
 ```text
-917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1
+5dc4a4f96a1efcc3cb7de8597124cb8b62fc747c5c1fe7cc0548e47ac4748eb6
 ```
 
 - The reused signer certificate SHA-256 is:
@@ -119,11 +136,12 @@ This is native function execution with constructed protocol state, not a live ne
 ```
 
 - v1, v2, and v3 verification passed; v4 is intentionally disabled by the shared signer. `zipalign` verification passed.
-- `adb install -r` returned `Success` on the Android x86 emulator and Galaxy S20. No uninstall, data clearing, or server restart was performed during update installation.
+- Native smoke execution from the revised signed APK's actual three libraries confirms successful renamed hosting and a subsequent original-name request/acceptance.
+- This revision has not been installed. The earlier callback-only build was installed with `adb install -r` on both devices without uninstalling or clearing data.
 
-### Live qualification: x86 and ARMv7
+### Historical live qualification: callback-only build
 
-On 2026-09-08, the corrected APK completed five matches between the Android x86 emulator on Wi-Fi and the Galaxy S20 running `armeabi-v7a` on cellular. Installed APK hashes matched the signed artifact above. The user exclusively performed game launches, navigation, matchmaking, and gameplay; match completion and visible symptoms below are user reports, not assistant UI observations.
+On 2026-09-08, the earlier APK with SHA-256 `917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1` completed five matches between the Android x86 emulator on Wi-Fi and the Galaxy S20 running `armeabi-v7a` on cellular. Installed hashes matched that earlier artifact, not the revised build above. The user exclusively performed all game UI actions; completion and visible symptoms below are user reports.
 
 Plain PeerChat fixture connections initially reserved `nick23045` and `nick786` without joining any game room. A later fixture reserved the S20's then-current accepted nickname, `nick786.59`, to force another host-side rename.
 
@@ -145,11 +163,13 @@ After match 1, a read-only emulator memory snapshot found `nick23045.26` in the 
 
 The local reservation helpers exited before match 4, but three stale server-side TCP connections continued to own the reserved names. Match 4's fresh `433` exposed that failed cleanup. With both game clients disconnected and only those fixture sessions remaining, the test service was restarted. Each reserved name was then accepted and released in two probe rounds, with server EOF observed after `QUIT`; a socket check confirmed no established PeerChat connections remained before match 5. No server code was changed.
 
-A displayed suffix does not establish that the current registration collided. Match 5 submitted an already suffixed name and was accepted directly, unlike match 4's original-name rejection. The patch copies the SDK's accepted nickname, including any suffix; it does not reset names or strip suffixes. Unsuffixed acceptance and subsequent suffix removal are covered by native execution, not by this live control.
+A displayed suffix does not establish that the current registration collided. Match 5 submitted an already suffixed name and was accepted directly, unlike match 4's original-name rejection. However, this was sticky provider state: the callback-only patch never reloaded the configured nickname before connecting. The original native harness supplied accepted identities directly and did not prove original-name request restoration. The revised harness now exercises that request boundary with a surviving provider.
 
 ### Remaining runtime boundaries
 
-No physical legacy `armeabi` device was tested. All five live matches used relay transport, so direct peer-to-peer gameplay is not qualified by these results. The emulator capture contains its own registration handshake and the S20's relayed room/launch messages, not the S20's direct registration handshake. No live `PEERComplete` memory snapshot or simultaneous S20 SDK/cache snapshot was taken; launch traffic, transport establishment, and user-reported completion establish the observed end-to-end result.
+The preferred-name restoration revision requires user-operated live verification: force a collision and complete a match, confirm server-side release of the original name, then reconnect without restarting the game and verify the original configured name is requested and accepted. Repeat with the other device hosting. Capture registration evidence rather than relying on the displayed suffix alone.
+
+No physical legacy `armeabi` device was tested. The earlier five live matches used relay transport, not direct peer-to-peer gameplay. Their emulator capture contains its own registration handshake and the S20's relayed room/launch messages, not the S20's direct handshake. No live `PEERComplete` or simultaneous S20 SDK/cache memory snapshot was taken.
 
 ## Sources and retained evidence
 

@@ -1,9 +1,9 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "source_apk_sha256": "5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650",
   "build": {
     "server_host": "217.154.27.122",
-    "signed_apk_sha256": "917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1",
+    "signed_apk_sha256": "5dc4a4f96a1efcc3cb7de8597124cb8b62fc747c5c1fe7cc0548e47ac4748eb6",
     "signer_certificate_sha256": "7e9ad31c19d7ee447c8e1a58bc7ca4be51acf4489f55cf2258124c45d7213417",
     "signature_schemes": {
       "v1": true,
@@ -16,56 +16,77 @@
     {
       "abi": "armeabi",
       "clean_sha256": "f3504049d4c89a60260ed12bfddb36520db1d92db8532983344e88efd5714d29",
-      "output_sha256": "842d5b3ba54314504903e5c86aa35bcc8e1fb87a076ede923a0a672e379b057e",
       "cached_nickname_capacity": 64,
       "cached_nickname_offset": 164,
+      "configured_nickname": 3873992,
       "file_offset_shift": 0,
       "hook_after": "58562000",
       "hook_before": "88efffff",
       "hook_file_offset": 1694052,
       "input_sha256": "f9f55738e7866e6bc8fae8f43894760820c05d052b3619f217060151b5728254",
       "original_callback": 1689212,
+      "output_sha256": "b55c117687bd728b8ae03acb560512eb64a718ba056cd0e74197c48101c0f118",
       "payload_file_offset": 3812684,
-      "payload_sha256": "31c23e6720fba00a1e3979acdc2cd3aae926cf1c83360634edcd2ca3d3dc8764",
-      "payload_size": 92,
+      "payload_sha256": "c5f2b4fad243b04fc6283e76bd8119131dd2c1e9812abaa6a690ccbb67082b2f",
+      "payload_size": 132,
       "payload_virtual_address": 3812684,
-      "peer_get_nick": 1742316
+      "peer_connect": 1753912,
+      "peer_get_nick": 1742316,
+      "request_helper_virtual_address": 3812776,
+      "request_hook_after": "a71508eb",
+      "request_hook_before": "0b3b00eb",
+      "request_hook_file_offset": 1693444,
+      "set_nickname": 1689632
     },
     {
       "abi": "armeabi-v7a",
       "clean_sha256": "8ec12dea59ac4a160078b19637b137bada21869184117a80d095908921cc4507",
-      "output_sha256": "8a8c2b354b5e08ed392c13981a9435cc9bf2c2daa875087cde481425c16d6e42",
       "cached_nickname_capacity": 64,
       "cached_nickname_offset": 164,
+      "configured_nickname": 3888632,
       "file_offset_shift": 0,
       "hook_after": "d0822000",
       "hook_before": "88efffff",
       "hook_file_offset": 1694004,
       "input_sha256": "ae3e230343b48b044fc6b823d80f6f28995ebd5308ad0cf24d5cfec509ab735c",
       "original_callback": 1689164,
+      "output_sha256": "fd9dcab21400ed8dfee8747e780271b6c4f1ecb73e8d20e42a313fa6b6b2c795",
       "payload_file_offset": 3824020,
-      "payload_sha256": "06b294599fb8e106b9de7dee8714682f61353d111748550ee50e952d023d9426",
-      "payload_size": 92,
+      "payload_sha256": "9b09d3c7e9a19839044f113dbad7c2ef0b38c7d57dda607e9d3d8d66c469e864",
+      "payload_size": 132,
       "payload_virtual_address": 3824020,
-      "peer_get_nick": 1742268
+      "peer_connect": 1753864,
+      "peer_get_nick": 1742268,
+      "request_helper_virtual_address": 3824112,
+      "request_hook_after": "c52008eb",
+      "request_hook_before": "0b3b00eb",
+      "request_hook_file_offset": 1693396,
+      "set_nickname": 1689584
     },
     {
       "abi": "x86",
       "clean_sha256": "223203cd256ef6e2471a817ef35bdb38bf6b3e9db45288a73d90794cc3d7232c",
-      "output_sha256": "5dbc4f3c39e813db4651c2ee7ceed6ee5ec2054148848f4b236396528f7d6bf3",
       "cached_nickname_capacity": 64,
       "cached_nickname_offset": 164,
+      "configured_nickname": 3895204,
       "file_offset_shift": 0,
       "hook_after": "8d832041ffff",
       "hook_before": "8d83d852ddff",
       "hook_file_offset": 1608985,
       "input_sha256": "a92c54190ba887cece754053aa496c63ccf551478c6e202e79831ae34983fc25",
       "original_callback": 1602976,
+      "output_sha256": "6b51ef711bb78bbb1206e08c32f0f8d405635ad9bf173f577a3e42354c131c80",
       "payload_file_offset": 3826664,
-      "payload_sha256": "474318440740292ca43a11b7b84a1740fc22472723634eec9273446a92246b13",
-      "payload_size": 79,
+      "payload_sha256": "3b264fff9c5c74698419a2cbafa1c0bc6e3c9adb7cbe17939d933a3920d7b855",
+      "payload_size": 123,
       "payload_virtual_address": 3826664,
-      "peer_get_nick": 1660160
+      "peer_connect": 1672848,
+      "peer_get_nick": 1660160,
+      "request_helper_virtual_address": 3826744,
+      "request_hook_after": "e8c1d62100",
+      "request_hook_before": "e819f90000",
+      "request_hook_file_offset": 1609074,
+      "set_nickname": 1603856
     }
   ],
   "native_validation": {
@@ -85,7 +106,9 @@
         "0x10000000: same-name live joiner",
         "0x10000000: ordinary host",
         "0x10000000: SDK nickname capacity",
-        "0x10000000: reconnect and suffix removal",
+        "0x10000000: preferred-name reconnect and suffix removal",
+        "0x10000000: edited preferred name with intentional suffix",
+        "0x10000000: native-generated name with empty setting",
         "0x10000000: failed connection",
         "0x10000000: null provider",
         "0x10000000: null peer",
@@ -94,7 +117,9 @@
         "0x38000000: same-name live joiner",
         "0x38000000: ordinary host",
         "0x38000000: SDK nickname capacity",
-        "0x38000000: reconnect and suffix removal",
+        "0x38000000: preferred-name reconnect and suffix removal",
+        "0x38000000: edited preferred name with intentional suffix",
+        "0x38000000: native-generated name with empty setting",
         "0x38000000: failed connection",
         "0x38000000: null provider",
         "0x38000000: null peer",
@@ -105,7 +130,9 @@
         "0x10000000: same-name live joiner",
         "0x10000000: ordinary host",
         "0x10000000: SDK nickname capacity",
-        "0x10000000: reconnect and suffix removal",
+        "0x10000000: preferred-name reconnect and suffix removal",
+        "0x10000000: edited preferred name with intentional suffix",
+        "0x10000000: native-generated name with empty setting",
         "0x10000000: failed connection",
         "0x10000000: null provider",
         "0x10000000: null peer",
@@ -114,7 +141,9 @@
         "0x38000000: same-name live joiner",
         "0x38000000: ordinary host",
         "0x38000000: SDK nickname capacity",
-        "0x38000000: reconnect and suffix removal",
+        "0x38000000: preferred-name reconnect and suffix removal",
+        "0x38000000: edited preferred name with intentional suffix",
+        "0x38000000: native-generated name with empty setting",
         "0x38000000: failed connection",
         "0x38000000: null provider",
         "0x38000000: null peer",
@@ -125,7 +154,9 @@
         "0x10000000: same-name live joiner",
         "0x10000000: ordinary host",
         "0x10000000: SDK nickname capacity",
-        "0x10000000: reconnect and suffix removal",
+        "0x10000000: preferred-name reconnect and suffix removal",
+        "0x10000000: edited preferred name with intentional suffix",
+        "0x10000000: native-generated name with empty setting",
         "0x10000000: failed connection",
         "0x10000000: null provider",
         "0x10000000: null peer",
@@ -134,13 +165,30 @@
         "0x38000000: same-name live joiner",
         "0x38000000: ordinary host",
         "0x38000000: SDK nickname capacity",
-        "0x38000000: reconnect and suffix removal",
+        "0x38000000: preferred-name reconnect and suffix removal",
+        "0x38000000: edited preferred name with intentional suffix",
+        "0x38000000: native-generated name with empty setting",
         "0x38000000: failed connection",
         "0x38000000: null provider",
         "0x38000000: null peer",
         "0x38000000: SDK getter unavailable"
       ]
-    }
+    },
+    "sticky_reconnect_reproduced_in_previous_signed_apk": {
+      "armeabi": "Alex.42",
+      "armeabi-v7a": "Alex.42",
+      "x86": "Alex.42"
+    },
+    "signed_apk_collision_and_free_name_reconnect_smoke": [
+      "armeabi",
+      "armeabi-v7a",
+      "x86"
+    ],
+    "native_configured_name_setter_feeds_request_hook": [
+      "armeabi",
+      "armeabi-v7a",
+      "x86"
+    ]
   },
   "artifact_validation": {
     "changed_baseline_zip_entries": [
@@ -158,40 +206,75 @@
       "armeabi-v7a",
       "x86"
     ],
-    "zipalign_verified": true
+    "zipalign_verified": true,
+    "changed_previous_signed_zip_entries": [
+      "lib/armeabi/libmortargame.so",
+      "lib/armeabi-v7a/libmortargame.so",
+      "lib/x86/libmortargame.so",
+      "META-INF/FRUITSPY.SF",
+      "META-INF/FRUITSPY.RSA",
+      "META-INF/MANIFEST.MF"
+    ],
+    "both_hook_sites_reject_altered_bytes": [
+      "armeabi",
+      "armeabi-v7a",
+      "x86"
+    ]
   },
   "device_validation": {
-    "update_install_succeeded": [
-      "Android x86 emulator",
-      "Galaxy S20 (armeabi-v7a)"
-    ],
-    "post_fix_live_match_completed": true,
+    "update_install_succeeded": [],
+    "post_fix_live_match_completed": false,
     "physical_armeabi_qualified": false,
-    "live_qualification": {
-      "date_utc": "2026-09-08",
-      "completed_matches": 5,
-      "completion_evidence": "User reports; all game UI actions were user-only.",
-      "host_abis_exercised": ["x86", "armeabi-v7a"],
-      "networks": ["emulator Wi-Fi", "Galaxy S20 cellular"],
-      "transport": "relay",
-      "natneg_sessions": ["7df5a3a6", "73439c23", "72b87719", "282ea01b", "5912d2b3"],
-      "host_launch_and_relay_forwarding_observed_for_all_matches": true,
-      "fresh_x86_collision_recovery": true,
-      "fresh_armv7_host_rename_and_launch": true,
-      "reconnect_accepted_identity_reuse": true,
-      "final_control": {
-        "controlled_reservations_present": false,
-        "x86_requested_nickname": "nick23045.3",
-        "x86_accepted_nickname": "nick23045.3",
-        "x86_433_or_retry_observed": false,
-        "armv7_host_nickname": "nick786.38",
-        "existing_suffixes_reused": true,
-        "unsuffixed_game_identity_exercised": false
+    "limitation": "Preferred-name restoration revision has not been installed or live-qualified. Earlier five-match evidence belongs to the historical callback-only build. All game UI actions remain user-only."
+  },
+  "historical_callback_only_build": {
+    "signed_apk_sha256": "917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1",
+    "device_validation": {
+      "update_install_succeeded": [
+        "Android x86 emulator",
+        "Galaxy S20 (armeabi-v7a)"
+      ],
+      "post_fix_live_match_completed": true,
+      "physical_armeabi_qualified": false,
+      "live_qualification": {
+        "date_utc": "2026-09-08",
+        "completed_matches": 5,
+        "completion_evidence": "User reports; all game UI actions were user-only.",
+        "host_abis_exercised": [
+          "x86",
+          "armeabi-v7a"
+        ],
+        "networks": [
+          "emulator Wi-Fi",
+          "Galaxy S20 cellular"
+        ],
+        "transport": "relay",
+        "natneg_sessions": [
+          "7df5a3a6",
+          "73439c23",
+          "72b87719",
+          "282ea01b",
+          "5912d2b3"
+        ],
+        "host_launch_and_relay_forwarding_observed_for_all_matches": true,
+        "fresh_x86_collision_recovery": true,
+        "fresh_armv7_host_rename_and_launch": true,
+        "reconnect_accepted_identity_reuse": true,
+        "final_control": {
+          "controlled_reservations_present": false,
+          "x86_requested_nickname": "nick23045.3",
+          "x86_accepted_nickname": "nick23045.3",
+          "x86_433_or_retry_observed": false,
+          "armv7_host_nickname": "nick786.38",
+          "existing_suffixes_reused": true,
+          "unsuffixed_game_identity_exercised": false
+        },
+        "fixture_cleanup": "Local helper exit left three stale server connections; match 4 was collision recovery, not a clean control. Test service restart, two successful acceptance/release probe rounds, and zero established PeerChat sockets preceded match 5.",
+        "final_capture_packets": 1573,
+        "capture_kernel_drops": 0
       },
-      "fixture_cleanup": "Local helper exit left three stale server connections; match 4 was collision recovery, not a clean control. Test service restart, two successful acceptance/release probe rounds, and zero established PeerChat sockets preceded match 5.",
-      "final_capture_packets": 1573,
-      "capture_kernel_drops": 0
+      "limitation": "No physical legacy armeabi or direct peer-to-peer gameplay qualification. S20 registration handshake was outside the emulator capture. Unsuffixed-host and suffix-removal behavior is covered by native execution, not the live control. No simultaneous live SDK/cache snapshot was taken."
     },
-    "limitation": "No physical legacy armeabi or direct peer-to-peer gameplay qualification. S20 registration handshake was outside the emulator capture. Unsuffixed-host and suffix-removal behavior is covered by native execution, not the live control. No simultaneous live SDK/cache snapshot was taken."
+    "qualification_correction": "Five matches completed, but the last control reused a cached alias; these results do not verify configured-name restoration or the revised request hook."
   }
 }

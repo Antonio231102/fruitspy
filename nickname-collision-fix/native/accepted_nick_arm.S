@@ -35,3 +35,23 @@ fruit_connected_with_accepted_nick:
     pop     {r0, r1, r2, r3, r4, lr}
     b       fruit_original_connected
 .size fruit_connected_with_accepted_nick, .-fruit_connected_with_accepted_nick
+
+.balign 4
+.global fruit_connect_with_preferred_nick
+.type fruit_connect_with_preferred_nick, %function
+fruit_connect_with_preferred_nick:
+    @ Preserve peerConnect's register and stack arguments across the native setter.
+    push    {r0, r1, r2, r3, r4, lr}
+    ldr     r0, [sp, #28]
+    cmp     r0, #0
+    beq     .Lconnect
+    ldr     r1, .Lpreferred_delta
+.Lpreferred_base:
+    add     r1, pc, r1
+    bl      fruit_set_nick
+.Lconnect:
+    pop     {r0, r1, r2, r3, r4, lr}
+    b       fruit_peer_connect
+.Lpreferred_delta:
+    .word   fruit_configured_nick - (.Lpreferred_base + 8)
+.size fruit_connect_with_preferred_nick, .-fruit_connect_with_preferred_nick

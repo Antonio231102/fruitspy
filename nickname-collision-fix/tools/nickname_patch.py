@@ -20,6 +20,12 @@ class NicknamePatch:
     callback_address_base: int
     original_callback: int
     peer_get_nick: int
+    configured_nick: int
+    set_nick: int
+    peer_connect: int
+    request_hook_offset: int
+    request_hook_before: bytes
+    request_payload_offset: int
     clang_args: tuple[str, ...]
     linker_machine: str
 
@@ -38,31 +44,47 @@ class NicknamePatch:
         prefix = b"\x8d\x83" if self.abi == "x86" else b""
         return prefix + struct.pack("<I", displacement)
 
+    @property
+    def request_hook_after(self) -> bytes:
+        target = self.payload_vaddr + self.request_payload_offset
+        if self.abi == "x86":
+            return b"\xe8" + struct.pack("<i", target - self.request_hook_offset - 5)
+        displacement = target - self.request_hook_offset - 8
+        if displacement % 4 or not -(1 << 25) <= displacement < (1 << 25):
+            raise ValueError(f"{self.abi}: connection helper is outside ARM BL range")
+        return struct.pack("<I", 0xEB000000 | ((displacement >> 2) & 0xFFFFFF))
+
 
 PATCHES = {
     patch.abi: patch
     for patch in (
         NicknamePatch(
             "armeabi", 0x3A2D4C,
-            "31c23e6720fba00a1e3979acdc2cd3aae926cf1c83360634edcd2ca3d3dc8764",
+            "c5f2b4fad243b04fc6283e76bd8119131dd2c1e9812abaa6a690ccbb67082b2f",
             0x19D964, bytes.fromhex("88efffff"), 0x19D6F4,
             0x19C67C, 0x1A95EC,
+            0x3B1CC8, 0x19C820, 0x1AC338,
+            0x19D704, bytes.fromhex("0b3b00eb"), 92,
             ("--target=armv5te-linux-androideabi19", "-march=armv5te"),
             "armelf_linux_eabi",
         ),
         NicknamePatch(
             "armeabi-v7a", 0x3A5994,
-            "06b294599fb8e106b9de7dee8714682f61353d111748550ee50e952d023d9426",
+            "9b09d3c7e9a19839044f113dbad7c2ef0b38c7d57dda607e9d3d8d66c469e864",
             0x19D934, bytes.fromhex("88efffff"), 0x19D6C4,
             0x19C64C, 0x1A95BC,
+            0x3B55F8, 0x19C7F0, 0x1AC308,
+            0x19D6D4, bytes.fromhex("0b3b00eb"), 92,
             ("--target=armv7a-linux-androideabi19", "-march=armv7-a"),
             "armelf_linux_eabi",
         ),
         NicknamePatch(
             "x86", 0x3A63E8,
-            "474318440740292ca43a11b7b84a1740fc22472723634eec9273446a92246b13",
+            "3b264fff9c5c74698419a2cbafa1c0bc6e3c9adb7cbe17939d933a3920d7b855",
             0x188D19, bytes.fromhex("8d83d852ddff"), 0x3B22C8,
             0x1875A0, 0x195500,
+            0x3B6FA4, 0x187910, 0x198690,
+            0x188D72, bytes.fromhex("e819f90000"), 80,
             ("--target=i686-linux-android19", "-m32"), "elf_i386",
         ),
     )
@@ -97,6 +119,9 @@ def patch_library(data: bytes, abi: str) -> tuple[bytes, dict[str, object]]:
     injected, shift = base.inject_payload(data, placement, b"\0" * padding + payload)
     result = bytearray(injected)
     base.replace_exact(result, patch.hook_offset, patch.hook_before, patch.hook_after, abi)
+    base.replace_exact(
+        result, patch.request_hook_offset, patch.request_hook_before, patch.request_hook_after, abi,
+    )
     output = bytes(result)
     return output, {
         "input_sha256": base.sha256_bytes(data),
@@ -111,6 +136,13 @@ def patch_library(data: bytes, abi: str) -> tuple[bytes, dict[str, object]]:
         "file_offset_shift": shift,
         "original_callback": patch.original_callback,
         "peer_get_nick": patch.peer_get_nick,
+        "configured_nickname": patch.configured_nick,
+        "set_nickname": patch.set_nick,
+        "peer_connect": patch.peer_connect,
+        "request_hook_file_offset": patch.request_hook_offset,
+        "request_hook_before": patch.request_hook_before.hex(),
+        "request_hook_after": patch.request_hook_after.hex(),
+        "request_helper_virtual_address": patch.payload_vaddr + patch.request_payload_offset,
         "cached_nickname_offset": 0xA4,
         "cached_nickname_capacity": 64,
     }

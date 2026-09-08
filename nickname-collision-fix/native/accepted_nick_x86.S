@@ -41,3 +41,24 @@ fruit_connected_with_accepted_nick:
     popl    %esi
     jmp     fruit_original_connected
 .size fruit_connected_with_accepted_nick, .-fruit_connected_with_accepted_nick
+
+.balign 4
+.global fruit_connect_with_preferred_nick
+.type fruit_connect_with_preferred_nick, @function
+fruit_connect_with_preferred_nick:
+    # Restore the configured name before a new peerConnect, not during its retries.
+    subl    $28, %esp
+    movl    52(%esp), %edx
+    testl   %edx, %edx
+    je      .Lconnect
+    call    .Lpreferred_base
+.Lpreferred_base:
+    popl    %eax
+    addl    $(fruit_configured_nick - .Lpreferred_base), %eax
+    movl    %edx, (%esp)
+    movl    %eax, 4(%esp)
+    call    fruit_set_nick
+.Lconnect:
+    addl    $28, %esp
+    jmp     fruit_peer_connect
+.size fruit_connect_with_preferred_nick, .-fruit_connect_with_preferred_nick
