@@ -119,17 +119,42 @@ This is native function execution with constructed protocol state, not a live ne
 ```
 
 - v1, v2, and v3 verification passed; v4 is intentionally disabled by the shared signer. `zipalign` verification passed.
-- `adb install -r` returned `Success` on the Android x86 emulator and Galaxy S20. No uninstall, data clearing, or server restart was performed.
+- `adb install -r` returned `Success` on the Android x86 emulator and Galaxy S20. No uninstall, data clearing, or server restart was performed during update installation.
 
-### Runtime qualification limit
+### Live qualification: x86 and ARMv7
 
-An interruption occurred after installation but before the controlled live collision/match check. On resumption, ADB listed no devices; the emulator had no listening ADB transport and the S20 was disconnected. Therefore **no post-fix live match, direct/relay negotiation result, or physical legacy ARM result is claimed**.
+On 2026-09-08, the corrected APK completed five matches between the Android x86 emulator on Wi-Fi and the Galaxy S20 running `armeabi-v7a` on cellular. Installed APK hashes matched the signed artifact above. The user exclusively performed game launches, navigation, matchmaking, and gameplay; match completion and visible symptoms below are user reports, not assistant UI observations.
 
-To qualify that remaining runtime boundary: deliberately occupy each client's requested nickname, connect the two corrected clients, verify their accepted/cached identities agree, observe host launch and `PEERComplete`, and complete a Wi-Fi/cellular match with each device hosting in turn. Also check an ordinary connection and a reconnect. Those are qualification procedures, not completed results.
+Plain PeerChat fixture connections initially reserved `nick23045` and `nick786` without joining any game room. A later fixture reserved the S20's then-current accepted nickname, `nick786.59`, to force another host-side rename.
+
+| Match | Host and accepted nickname | Joiner and accepted nickname | Qualification |
+|---|---|---|---|
+| 1 | x86: `nick23045.26` | S20: `nick786.59` | Emulator capture contains `433`, retry, acceptance, and host `GML`; match completed without issue. |
+| 2 | S20: `nick786.59` | x86: `nick23045.26` | Reversed hosting roles and reused accepted identities on reconnect; match completed successfully. |
+| 3 | S20: `nick786.59.48` | x86: `nick23045.26` | S20's previous name was held by the fixture; its newly suffixed identity sent `GML`. User reported no slowdown, desynchronization, or disconnects. |
+| 4 | S20: `nick786.38` | x86: `nick23045.3` | Another successful collision-recovery match, not the intended no-collision control: emulator requested `nick23045`, received `433`, and retried. |
+| 5 | S20: `nick786.38` | x86: `nick23045.3` | Clean control after verified fixture release: emulator submitted `nick23045.3` and received `001` without `433` or retry; S20 retained its previous accepted identity and launched. Match completed correctly. |
+
+The first reversed-role search expired before an opponent joined; a new search produced match 2. This was an empty-search timeout, not a reproduced renamed-host stall.
+
+All five captures contain the host launch command and corresponding NAT-negotiation traffic. Server journal sessions `7df5a3a6`, `73439c23`, `72b87719`, `282ea01b`, and `5912d2b3` record successful reports from both peers, relay establishment, and gameplay forwarding. Observed relay metrics reported zero drops; this is not a measurement of all network packet loss.
+
+After match 1, a read-only emulator memory snapshot found `nick23045.26` in the provider cache at offset `0xa4`, matching the accepted nickname in the capture. Its SDK peer pointer was already null after cleanup, so this is not a simultaneous live SDK/cache comparison.
+
+### Fixture cleanup and suffix interpretation
+
+The local reservation helpers exited before match 4, but three stale server-side TCP connections continued to own the reserved names. Match 4's fresh `433` exposed that failed cleanup. With both game clients disconnected and only those fixture sessions remaining, the test service was restarted. Each reserved name was then accepted and released in two probe rounds, with server EOF observed after `QUIT`; a socket check confirmed no established PeerChat connections remained before match 5. No server code was changed.
+
+A displayed suffix does not establish that the current registration collided. Match 5 submitted an already suffixed name and was accepted directly, unlike match 4's original-name rejection. The patch copies the SDK's accepted nickname, including any suffix; it does not reset names or strip suffixes. Unsuffixed acceptance and subsequent suffix removal are covered by native execution, not by this live control.
+
+### Remaining runtime boundaries
+
+No physical legacy `armeabi` device was tested. All five live matches used relay transport, so direct peer-to-peer gameplay is not qualified by these results. The emulator capture contains its own registration handshake and the S20's relayed room/launch messages, not the S20's direct registration handshake. No live `PEERComplete` memory snapshot or simultaneous S20 SDK/cache snapshot was taken; launch traffic, transport establishment, and user-reported completion establish the observed end-to-end result.
 
 ## Sources and retained evidence
 
 - Local clean APK and its independently mapped native libraries; exact input digest is in `README.md` and the shared patcher allowlist.
 - SDK public contracts: [peerConnectCallback and peerGetNick](https://github.com/GameProgressive/UniSpySDK/blob/master/Peer/peer.h), [peerStartGame implementation](https://github.com/GameProgressive/UniSpySDK/blob/master/Peer/peerMain.c), and [player state layout](https://github.com/GameProgressive/UniSpySDK/blob/master/Peer/peerPlayers.h). The deployed binary, not an assumed SDK source version, determines the patch offsets.
 - Original private investigation directory: `fruitspy-s20-pair-20260908T010926Z`, containing the decoded PeerChat exchange, final packet capture, native disassembly excerpts, and root-cause report. These captures and proprietary disassemblies are intentionally excluded from Git.
+- Controlled post-fix private evidence directory: `build/controlled-20260908T033105Z`, containing the final 1,573-packet emulator capture, decoded PeerChat streams, server journals, device/build checks, fixture-release probes, and per-match/user observations. Raw captures and connection details remain excluded from Git.
 - `analysis/evidence.json` records the implementation/build identifiers and machine-verification results without copying those private artifacts.

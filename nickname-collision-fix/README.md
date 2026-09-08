@@ -8,7 +8,9 @@ Standalone native correction for `armeabi`, `armeabi-v7a`, and `x86`. After Peer
 - Native execution reproduces the uncorrected renamed-host failure in every ABI and passes 18 corrected scenarios per ABI at two load addresses (54 total).
 - A signed APK was built with the existing FruitSpy certificate; v1/v2/v3 signatures and APK alignment passed verification.
 - Update installation succeeded on the Android x86 emulator and Galaxy S20 without uninstalling or clearing data.
-- **Post-fix live matchmaking is not yet qualified.** Both devices became unreachable through ADB after an interruption before that check could be completed. Native execution is not evidence of an end-to-end network match, and there was no physical legacy `armeabi` device qualification.
+- **Five post-fix live matches completed successfully** between the Wi-Fi x86 emulator and cellular Galaxy S20 (`armeabi-v7a`), with both devices hosting. Captures establish renamed-host launch and relay negotiation; completion was reported by the user, who exclusively controlled the game UI.
+- Fresh collision recovery and reconnect identity reuse were exercised. The final control had no reserved nicknames: the emulator submitted its existing suffixed nickname and received immediate acceptance without `433` or retry. The patch does not strip an already accepted suffix.
+- Physical legacy `armeabi` and direct peer-to-peer transport remain unqualified. Native execution covers the unsuffixed-host and suffix-removal cases; the final live control reused suffixed identities.
 
 This subfolder owns the nickname patch, payload source/binaries, build entry point, regression harness, and findings. It reuses `patcher/patch_apk.py` for the allowlisted clean APK, existing clock/endpoint transformations, ELF insertion, alignment, and signing. The shared patcher, server, and existing Unified APK are not modified. Its installable output includes the existing clock and FruitSpy endpoint fixes rather than returning to the defunct GameSpy endpoints.
 

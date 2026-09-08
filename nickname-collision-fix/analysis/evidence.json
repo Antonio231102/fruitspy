@@ -165,8 +165,33 @@
       "Android x86 emulator",
       "Galaxy S20 (armeabi-v7a)"
     ],
-    "post_fix_live_match_completed": false,
+    "post_fix_live_match_completed": true,
     "physical_armeabi_qualified": false,
-    "limitation": "Devices became unavailable through ADB after interruption before live collision and matchmaking qualification."
+    "live_qualification": {
+      "date_utc": "2026-09-08",
+      "completed_matches": 5,
+      "completion_evidence": "User reports; all game UI actions were user-only.",
+      "host_abis_exercised": ["x86", "armeabi-v7a"],
+      "networks": ["emulator Wi-Fi", "Galaxy S20 cellular"],
+      "transport": "relay",
+      "natneg_sessions": ["7df5a3a6", "73439c23", "72b87719", "282ea01b", "5912d2b3"],
+      "host_launch_and_relay_forwarding_observed_for_all_matches": true,
+      "fresh_x86_collision_recovery": true,
+      "fresh_armv7_host_rename_and_launch": true,
+      "reconnect_accepted_identity_reuse": true,
+      "final_control": {
+        "controlled_reservations_present": false,
+        "x86_requested_nickname": "nick23045.3",
+        "x86_accepted_nickname": "nick23045.3",
+        "x86_433_or_retry_observed": false,
+        "armv7_host_nickname": "nick786.38",
+        "existing_suffixes_reused": true,
+        "unsuffixed_game_identity_exercised": false
+      },
+      "fixture_cleanup": "Local helper exit left three stale server connections; match 4 was collision recovery, not a clean control. Test service restart, two successful acceptance/release probe rounds, and zero established PeerChat sockets preceded match 5.",
+      "final_capture_packets": 1573,
+      "capture_kernel_drops": 0
+    },
+    "limitation": "No physical legacy armeabi or direct peer-to-peer gameplay qualification. S20 registration handshake was outside the emulator capture. Unsuffixed-host and suffix-removal behavior is covered by native execution, not the live control. No simultaneous live SDK/cache snapshot was taken."
   }
 }
