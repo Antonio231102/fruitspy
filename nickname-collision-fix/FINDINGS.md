@@ -233,11 +233,28 @@ The final capture contains 982 complete packets and four S4 registration exchang
 
 ### Manual same-name player collision
 
-After the mixed-ABI series, the user set both phones' configured nicknames to `testing` and reported successful game initiation, with one device displaying `testing.58`. This directly exercises a collision between two real game clients rather than fixture-held names. Game initiation and the suffixed display passed by user observation; the renamed device, host role, completed-match outcome and subsequent reconnect behavior were not reported. No packet capture was taken for this manual test, and it is not added to the 12 completed qualification matches.
+After the mixed-ABI series, the user set both phones' configured nicknames to `testing` and reported successful game initiation, with one device displaying `testing.58`. This directly exercises a collision between two real game clients rather than fixture-held names. Game initiation and the suffixed display passed by user observation; the renamed device, host role, completed-match outcome and subsequent reconnect behavior were not reported. No packet capture was taken for this manual test, and it is excluded from the completed qualification match count.
+
+### Maximum-length nickname collision and restoration
+
+On 2026-09-09, the user first configured both clients as `0123456789abcdef` and reported game initiation with one original name and one full `0123456789abcdef.94` alias. Registration preceded capture; the renamed device and completed-match outcome were not reported. The user then changed names and requested a controlled repeat. This initial attempt is kept separate and is not counted as a completed qualification match.
+
+For the repeat, the S4 (`armeabi`) used `0123456789abcdef` and the S20 (`armeabi-v7a`) used `fedcba9876543210`. Both are exactly 16 characters. Distinct originals prevent a new inter-client collision after the fixture releases them. A VPS-loopback fixture reserved both names without joining rooms, and capture was running before either registration.
+
+| Match | S4 host | S20 joiner | Captured result |
+|---|---|---|---|
+| Collision | `0123456789abcdef.25` | `fedcba9876543210.19` | S4 requested its exact original, received `433`, retried and was accepted, then launched. Both accepted identities preserve the full 16-character name plus suffix, 19 characters total. |
+| Free-name reconnect | `0123456789abcdef` | `fedcba9876543210` | After verified fixture release, S4 requested its original once and received `001` without rejection or retry, then launched. S20's forwarded identity was its exact original. |
+
+The user reported both matches completed successfully with the displayed names above. S20 PID `24370` and S4 PID `27610` remained unchanged; the configured nicknames were not edited between the controlled matches. Read-only S4 memory after the collision still contained exactly `0123456789abcdef` followed by NUL in configured-name storage. This verifies the legacy-host maximum-length boundary and no-restart exact-name restoration, not cold-start preference persistence.
+
+Both matches negotiated LAN gameplay and exchanged bidirectional UDP directly: collision S20 `192.168.100.9:45193` ↔ S4 `192.168.100.17:37002`; reconnect S20 `192.168.100.9:59891` ↔ S4 `192.168.100.17:47558`. S4 registration was captured directly; S20 accepted names were observed through forwarded messages and user reports, not its direct handshake.
+
+Both fixture names were released with server EOF and passed acceptance/release probes; zero PeerChat connections preceded the reconnect. The final capture contains 467 complete packets and two complete registration exchanges, with zero kernel drops. Diagnostics were stopped after export, remote fixture/capture artifacts removed with absence checks, and FruitSpy remained active with zero established PeerChat/browser connections.
 
 ### Remaining runtime boundaries
 
-The three revised S20/S4 physical series cover 12 completed matches: four `armeabi-v7a` relay matches, four forced-`armeabi` relay matches, and four mixed-ABI direct LAN matches. All three series exercise both hosting roles and no-restart original-name restoration. They do not qualify execution on an actual ARMv5/ARMv6 CPU.
+The revised S20/S4 physical qualification covers 14 completed matches: four `armeabi-v7a` relay matches, four forced-`armeabi` relay matches, four mixed-ABI direct LAN matches, and two maximum-length mixed-ABI LAN matches. The first three series exercise both hosting roles; the maximum-length pair exercises the legacy S4 host. Every series includes no-restart original-name restoration. These results do not qualify execution on an actual ARMv5/ARMv6 CPU.
 
 Further x86 device testing on this workstation is discontinued at the user's direction. The user reported that known emulator instability, unrelated to this project, caused a PC softlock. The interrupted revised-build attempt supplies no completed-match result. The release decision relies on existing native checks and historical live evidence, with remaining x86 issues to be handled through public-release issue tracking and user feedback.
 
@@ -254,4 +271,5 @@ Recovery of an interrupted P2P session is outside project scope at the user's di
 - Revised physical-pair private evidence directory: `build/physical-pair-20260909T000211Z`, containing the final 1,419-packet S4 capture, four decoded PeerChat streams, server journal, installed-build checks, unchanged process IDs, fixture-release evidence, and per-match/user observations. Final capture SHA-256: `5f7936cdbb8eaa5164236ce2b4f22f9b5babe65229b6420577c1a4ec0590df7d`. Raw captures and connection details remain excluded from Git.
 - Forced-legacy private evidence directory: `build/legacy-physical-20260909T014550Z`, containing the legacy-only test APK and derivation manifest, installed-file hashes, runtime ABI evidence, final 1,588-packet S4 capture, seven decoded registrations, server journal, release probes, cleanup checks and per-match/user observations. Final capture SHA-256: `56c0346f79bb27fda7f27e74936c5b9d6453dd7e021b96ab429e9529cd36504b`. These raw artifacts remain excluded from Git.
 - Mixed-ABI private evidence directory: `build/mixed-abi-20260909T034701Z`, containing update-install and library hashes, Wi-Fi readiness, four decoded S4 registrations, per-match bidirectional LAN flow summaries, the final 982-packet capture, recovered server journal, fixture release/recovery records and user reports. Final capture SHA-256: `83f3b7ef24529242d817d3647453efc662d8c18319bff8e73398394d13b576ff`. Raw artifacts remain excluded from Git.
+- Maximum-length private evidence directory: `build/max-nickname-20260909T042602Z`, containing the separate initial user report, controlled collision/reconnect observations, two decoded S4 registrations, exact configured-name memory checks, LAN flow summaries, final 467-packet capture, server journal, release probes and cleanup checks. Final capture SHA-256: `dc885b535113c4499fb7380273a4dfec2da7cf5b64b9398646bea960f611800f`. Raw artifacts remain excluded from Git.
 - `analysis/evidence.json` records the implementation/build identifiers and machine-verification results without copying those private artifacts.

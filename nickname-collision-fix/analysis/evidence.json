@@ -487,6 +487,59 @@
     "match_completion": "Not reported; excluded from completed-match count",
     "subsequent_reconnect_behavior": "Not reported"
   },
+  "maximum_length_nickname_qualification": {
+    "date_utc": "2026-09-09",
+    "initial_same_name_attempt": {
+      "configured_name_on_both_clients": "0123456789abcdef",
+      "user_reported_game_initiation": true,
+      "user_reported_names": ["0123456789abcdef", "0123456789abcdef.94"],
+      "registration_preceded_capture": true,
+      "completed_match_counted": false,
+      "repeat_reason": "User changed nicknames and requested a controlled repeat."
+    },
+    "controlled_completed_matches": 2,
+    "completion_evidence": "User reports; game UI user-only.",
+    "host": {"device": "S4", "abi": "armeabi"},
+    "joiner": {"device": "S20", "abi": "armeabi-v7a"},
+    "configured_names": {
+      "s4": "0123456789abcdef",
+      "s20": "fedcba9876543210"
+    },
+    "configured_name_length": 16,
+    "unchanged_game_pids": {"s4": 27610, "s20": 24370},
+    "configured_names_unchanged_between_controlled_matches": true,
+    "collision": {
+      "s4_requested": "0123456789abcdef",
+      "s4_433_and_retry_observed": true,
+      "s4_accepted": "0123456789abcdef.25",
+      "s20_forwarded_identity": "fedcba9876543210.19",
+      "accepted_name_lengths": [19, 19],
+      "original_names_not_truncated": true,
+      "s4_host_launch_observed": true,
+      "direct_udp_endpoints": ["192.168.100.9:45193", "192.168.100.17:37002"]
+    },
+    "reconnect": {
+      "s4_requested": "0123456789abcdef",
+      "s4_nickname_commands": 1,
+      "s4_433_or_retry_observed": false,
+      "s4_accepted": "0123456789abcdef",
+      "s20_forwarded_identity": "fedcba9876543210",
+      "exact_original_name_restoration_without_restart": true,
+      "s4_host_launch_observed": true,
+      "direct_udp_endpoints": ["192.168.100.9:59891", "192.168.100.17:47558"]
+    },
+    "s4_configured_storage_after_collision": "Exact 16-character original followed by NUL.",
+    "fixture_release": "Both originals released with server EOF, accepted/released by availability probes; zero PeerChat connections before reconnect.",
+    "transport": "Direct LAN UDP in both controlled matches.",
+    "capture_boundary": "S4 registration captured directly; S20 accepted identities in forwarded messages. Initial same-name attempt registration preceded capture.",
+    "cold_start_preference_persistence_tested": false,
+    "final_capture_packets": 467,
+    "complete_captured_registrations": 2,
+    "capture_kernel_drops": 0,
+    "final_capture_sha256": "dc885b535113c4499fb7380273a4dfec2da7cf5b64b9398646bea960f611800f",
+    "cleanup": "Diagnostics stopped; remote fixture/capture artifacts removed and absence verified. Service active, zero established PeerChat/browser connections. Installed APKs unchanged.",
+    "private_evidence_directory": "build/max-nickname-20260909T042602Z"
+  },
   "historical_callback_only_build": {
     "signed_apk_sha256": "917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1",
     "device_validation": {
