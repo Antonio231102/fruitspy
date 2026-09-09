@@ -467,6 +467,15 @@
     "final_capture_sha256": "83f3b7ef24529242d817d3647453efc662d8c18319bff8e73398394d13b576ff",
     "private_evidence_directory": "build/mixed-abi-20260909T034701Z"
   },
+  "manual_same_name_collision": {
+    "evidence": "User report after mixed-ABI qualification; no packet capture.",
+    "configured_nickname_on_both_devices": "testing",
+    "game_initiation_succeeded": true,
+    "one_device_displayed_nickname": "testing.58",
+    "renamed_device_and_host_role": "Not reported",
+    "match_completion": "Not reported; excluded from completed-match count",
+    "subsequent_reconnect_behavior": "Not reported"
+  },
   "historical_callback_only_build": {
     "signed_apk_sha256": "917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1",
     "device_validation": {

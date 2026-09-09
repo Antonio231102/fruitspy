@@ -231,6 +231,10 @@ After match 1, both diagnostic SSH channels reset. The game processes remained r
 
 The final capture contains 982 complete packets and four S4 registration exchanges, with zero kernel drops. After export, all diagnostics stopped and the remote fixture/capture artifacts were removed with absence checks. FruitSpy remained active with zero established PeerChat connections. S20 remains on the normal three-ABI APK; S4 remains on the legacy-only test APK.
 
+### Manual same-name player collision
+
+After the mixed-ABI series, the user set both phones' configured nicknames to `testing` and reported successful game initiation, with one device displaying `testing.58`. This directly exercises a collision between two real game clients rather than fixture-held names. Game initiation and the suffixed display passed by user observation; the renamed device, host role, completed-match outcome and subsequent reconnect behavior were not reported. No packet capture was taken for this manual test, and it is not added to the 12 completed qualification matches.
+
 ### Remaining runtime boundaries
 
 The three revised S20/S4 physical series cover 12 completed matches: four `armeabi-v7a` relay matches, four forced-`armeabi` relay matches, and four mixed-ABI direct LAN matches. All three series exercise both hosting roles and no-restart original-name restoration. They do not qualify execution on an actual ARMv5/ARMv6 CPU.
