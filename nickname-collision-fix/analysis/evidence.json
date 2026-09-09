@@ -229,7 +229,8 @@
     ],
     "post_fix_live_match_completed": true,
     "physical_armeabi_v7a_qualified": true,
-    "physical_armeabi_qualified": false,
+    "physical_armeabi_qualified": true,
+    "actual_armv5_armv6_hardware_qualified": false,
     "x86_runtime_policy": {
       "further_device_testing": false,
       "reason": "User-reported known emulator instability unrelated to this project caused a workstation softlock.",
@@ -300,7 +301,87 @@
       "final_capture_sha256": "5f7936cdbb8eaa5164236ce2b4f22f9b5babe65229b6420577c1a4ec0590df7d",
       "private_evidence_directory": "build/physical-pair-20260909T000211Z"
     },
-    "limitation": "Both physical phones execute armeabi-v7a; no physical legacy armeabi or direct peer-to-peer gameplay qualification. S4 registration handshakes captured directly; S20 accepted identities observed in forwarded messages, not its direct registration handshake. No simultaneous live SDK/cache snapshot. Earlier five-match evidence belongs to the historical callback-only build; no further x86 device testing is planned."
+    "limitation": "The normal APK's four-match series used armeabi-v7a; the separately recorded legacy-only test build adds four armeabi matches on the same phones, not actual ARMv5/ARMv6 hardware qualification. No direct peer-to-peer gameplay qualification. S4 registration handshakes captured directly; S20 accepted identities observed in forwarded messages, not its direct handshake. No simultaneous live SDK/cache snapshot. Earlier five-match evidence belongs to the historical callback-only build; no further x86 device testing is planned."
+  },
+  "legacy_armeabi_test_build": {
+    "date_utc": "2026-09-09",
+    "source_apk_sha256": "5dc4a4f96a1efcc3cb7de8597124cb8b62fc747c5c1fe7cc0548e47ac4748eb6",
+    "test_apk_sha256": "2eaba89dac58a9aaa7477fd8781ee82ae9e073fce039963ac06931dc72ddb11f",
+    "sole_native_entry": "lib/armeabi/libmortargame.so",
+    "library_sha256": "b55c117687bd728b8ae03acb560512eb64a718ba056cd0e74197c48101c0f118",
+    "all_retained_non_signature_entries_identical_to_source": true,
+    "removed_abis": ["armeabi-v7a", "x86"],
+    "existing_signer_reused": true,
+    "v1_v2_v3_and_alignment_verified": true,
+    "fresh_install_authorized_without_backup": true,
+    "installed_apk_and_extracted_library_hashes_verified_on_both_phones": true,
+    "runtime_evidence": {
+      "s4": "Root process maps identify the installed legacy library.",
+      "s20": "Package Manager selects armeabi; only that ABI is installed and extracted library hash matches. Game running; direct process maps denied by Android.",
+      "actual_armv5_armv6_hardware_tested": false
+    },
+    "completed_matches": 4,
+    "completion_evidence": "User reports; all game UI actions were user-only.",
+    "networks": ["S20 cellular", "S4 Wi-Fi"],
+    "transport": "relay",
+    "unchanged_game_pids": {"s20": 1785, "s4": 27610},
+    "matches": [
+      {
+        "host": "S20",
+        "host_nickname": "nick221.86",
+        "joiner_nickname": "nick27088.97",
+        "original_names_reserved": true,
+        "s4_requested_nickname": "nick27088",
+        "s4_433_and_retry_observed": true,
+        "natneg_session": "0aa75048"
+      },
+      {
+        "host": "S20",
+        "host_nickname": "nick221",
+        "joiner_nickname": "nick27088",
+        "original_names_reserved": false,
+        "s4_requested_nickname": "nick27088",
+        "s4_433_and_retry_observed": false,
+        "preferred_name_restoration_without_restart": true,
+        "natneg_session": "5e9ca7c6"
+      },
+      {
+        "host": "S4",
+        "host_nickname": "nick27088.84",
+        "joiner_nickname": "nick221.82",
+        "original_names_reserved": true,
+        "s4_requested_nickname": "nick27088",
+        "s4_433_and_retry_observed": true,
+        "natneg_session": "3b9fa255"
+      },
+      {
+        "host": "S4",
+        "host_nickname": "nick27088",
+        "joiner_nickname": "nick221",
+        "original_names_reserved": false,
+        "s4_requested_nickname": "nick27088",
+        "s4_433_and_retry_observed": false,
+        "preferred_name_restoration_without_restart": true,
+        "natneg_session": "2a27db12"
+      }
+    ],
+    "additional_registrations_before_match_3": {
+      "accepted_names": ["nick27088.72", "nick27088.3", "nick27088.87"],
+      "each_requested_original_and_retried_after_433": true,
+      "host_launch_observed": false,
+      "counted_as_completed_matches": false,
+      "cause": "Not established by user report."
+    },
+    "host_launch_and_relay_forwarding_observed_for_all_completed_matches": true,
+    "both_clients_reported_natneg_success_for_all_completed_matches": true,
+    "s4_configured_preference_after_both_collision_matches": "nick27088",
+    "fixture_release_before_each_reconnect": "Server EOF, successful original-name acceptance/release probes, zero established PeerChat sockets.",
+    "cleanup": "Fixture exited; diagnostics stopped; remote fixture script and S4 capture/binary removed and absence confirmed. Service active, zero established PeerChat sockets. Test APKs left installed.",
+    "final_capture_packets": 1588,
+    "final_capture_registrations": 7,
+    "capture_kernel_drops": 0,
+    "final_capture_sha256": "56c0346f79bb27fda7f27e74936c5b9d6453dd7e021b96ab429e9529cd36504b",
+    "private_evidence_directory": "build/legacy-physical-20260909T014550Z"
   },
   "historical_callback_only_build": {
     "signed_apk_sha256": "917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1",

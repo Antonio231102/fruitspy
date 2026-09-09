@@ -182,13 +182,39 @@ The reservation fixture ran over VPS loopback, held both original names without 
 
 The final S4 capture contains 1,419 complete packets with zero kernel drops. It directly captures all four S4 registrations and the S20's forwarded room/launch or negotiation messages, not the S20's direct registration handshake. Every server session records successful reports from both peers, relay establishment, and gameplay forwarding; observed relay metrics reported zero drops, not a measurement of all network packet loss.
 
+### Physical live qualification: forced legacy `armeabi` binary
+
+On 2026-09-09, a test-only APK was derived from the revised three-ABI artifact by removing `lib/armeabi-v7a/libmortargame.so`, `lib/x86/libmortargame.so`, and old signature entries, then aligning and signing through the existing shared helpers. Every retained non-signature entry is byte-identical to the source APK. No native code or release artifact was changed.
+
+- Test APK SHA-256: `2eaba89dac58a9aaa7477fd8781ee82ae9e073fce039963ac06931dc72ddb11f`.
+- Sole native entry: `lib/armeabi/libmortargame.so`, SHA-256 `b55c117687bd728b8ae03acb560512eb64a718ba056cd0e74197c48101c0f118`, matching the revised release manifest.
+- Existing certificate reused; v1/v2/v3 signatures and alignment verified. Both phones were fresh-installed with user authorization, without backup.
+- Installed APK and extracted library hashes matched on both phones. S4 root process maps directly show the installed legacy library. S20 reports `primaryCpuAbi=armeabi`; its game ran with only that ABI installed, but Android denied direct process-map access. S20 loaded-library identity is therefore supported by package selection and installed-file evidence, not a live mapping snapshot.
+
+The S20 remained on cellular and the S4 on Wi-Fi. The user exclusively operated the game UI and reported all four matches completed correctly with the nicknames below.
+
+| Match | Host | Joiner | Result | NATNeg session |
+|---|---|---|---|---|
+| 1 | S20: `nick221.86` | S4: `nick27088.97` | Forced collision; S4 original-name rejection, retry and acceptance captured; renamed S20 sent host launch. | `0aa75048` |
+| 2 | S20: `nick221` | S4: `nick27088` | Names released; S4 original name accepted without rejection or retry; S20 launched with its original name. | `5e9ca7c6` |
+| 3 | S4: `nick27088.84` | S20: `nick221.82` | Forced collision; S4 original-name rejection, retry, acceptance and host launch captured. | `3b9fa255` |
+| 4 | S4: `nick27088` | S20: `nick221` | Names released; S4 original name accepted without rejection or retry, then host launch; S20 joined with its original name. | `2a27db12` |
+
+The S20 PID remained `1785` and the S4 PID remained `27610` across all four matches. After both collision matches, read-only S4 checks at configured-name storage `load_base + 0x3b1cc8` still found `nick27088`. Both hosting roles therefore exercised legacy-binary collision recovery and original-name restoration without game restarts.
+
+Three additional S4 registrations preceded match 3, accepting `nick27088.72`, `nick27088.3`, and `nick27088.87`. Each requested the original name and retried after `433`, but none contains a captured host launch. These are retained separately and are not counted as completed matches; no user-reported cause is assigned to them.
+
+The VPS-loopback reservation fixture joined no rooms. Before each free-name reconnect, both names were released with server EOF, accepted and released by availability probes, and a socket check found zero established PeerChat connections. After the final match, the fixture exited successfully; captures and journal were saved, all three diagnostics stopped, and remote fixture/capture artifacts were removed with absence checks. FruitSpy remained active with zero PeerChat connections. The installed legacy-only test APKs were left on both phones.
+
+The final S4 capture contains 1,588 complete packets, seven registration exchanges and zero kernel drops. All four completed-match sessions have both successful client reports, relay establishment and gameplay forwarding in the server journal. Capture visibility remains S4 direct registration plus S20 forwarded identities/messages; observed zero relay drops does not measure all network packet loss.
+
 ### Remaining runtime boundaries
 
-The S20/S4 physical qualification above covers the revised request hook and both hosting roles on `armeabi-v7a`, including original-name restoration without restarting either game.
+The two S20/S4 physical series above cover both hosting roles and no-restart original-name restoration for `armeabi-v7a` and the forced legacy `armeabi` binary. They do not qualify execution on an actual ARMv5/ARMv6 CPU.
 
 Further x86 device testing on this workstation is discontinued at the user's direction. The user reported that known emulator instability, unrelated to this project, caused a PC softlock. The interrupted revised-build attempt supplies no completed-match result. The release decision relies on existing native checks and historical live evidence, with remaining x86 issues to be handled through public-release issue tracking and user feedback.
 
-No physical legacy `armeabi` device was tested. Both the historical five-match series and the revised four-match physical series used relay transport, not direct peer-to-peer gameplay. The historical emulator capture and current S4 capture contain their own registration handshakes and the S20's forwarded messages, not its direct handshake. No live `PEERComplete` or simultaneous S20 SDK/cache memory snapshot was taken.
+No actual ARMv5/ARMv6 hardware was tested. The historical five-match series and both revised four-match physical series used relay transport, not direct peer-to-peer gameplay. The historical emulator capture and current S4 captures contain their own registration handshakes and the S20's forwarded messages, not its direct handshake. No live `PEERComplete` or simultaneous S20 SDK/cache memory snapshot was taken.
 
 ## Sources and retained evidence
 
@@ -197,4 +223,5 @@ No physical legacy `armeabi` device was tested. Both the historical five-match s
 - Original private investigation directory: `fruitspy-s20-pair-20260908T010926Z`, containing the decoded PeerChat exchange, final packet capture, native disassembly excerpts, and root-cause report. These captures and proprietary disassemblies are intentionally excluded from Git.
 - Controlled post-fix private evidence directory: `build/controlled-20260908T033105Z`, containing the final 1,573-packet emulator capture, decoded PeerChat streams, server journals, device/build checks, fixture-release probes, and per-match/user observations. Raw captures and connection details remain excluded from Git.
 - Revised physical-pair private evidence directory: `build/physical-pair-20260909T000211Z`, containing the final 1,419-packet S4 capture, four decoded PeerChat streams, server journal, installed-build checks, unchanged process IDs, fixture-release evidence, and per-match/user observations. Final capture SHA-256: `5f7936cdbb8eaa5164236ce2b4f22f9b5babe65229b6420577c1a4ec0590df7d`. Raw captures and connection details remain excluded from Git.
+- Forced-legacy private evidence directory: `build/legacy-physical-20260909T014550Z`, containing the legacy-only test APK and derivation manifest, installed-file hashes, runtime ABI evidence, final 1,588-packet S4 capture, seven decoded registrations, server journal, release probes, cleanup checks and per-match/user observations. Final capture SHA-256: `56c0346f79bb27fda7f27e74936c5b9d6453dd7e021b96ab429e9529cd36504b`. These raw artifacts remain excluded from Git.
 - `analysis/evidence.json` records the implementation/build identifiers and machine-verification results without copying those private artifacts.
