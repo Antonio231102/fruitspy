@@ -165,13 +165,30 @@ The local reservation helpers exited before match 4, but three stale server-side
 
 A displayed suffix does not establish that the current registration collided. Match 5 submitted an already suffixed name and was accepted directly, unlike match 4's original-name rejection. However, this was sticky provider state: the callback-only patch never reloaded the configured nickname before connecting. The original native harness supplied accepted identities directly and did not prove original-name request restoration. The revised harness now exercises that request boundary with a surviving provider.
 
+### Physical live qualification: preferred-name restoration revision
+
+On 2026-09-09, the revised signed APK identified above completed four matches between the Galaxy S20 on cellular and Galaxy S4 SGH-I337M on Wi-Fi. Both installed APK hashes matched the revised artifact; both phones execute `armeabi-v7a`. The user exclusively operated all game UI and reported successful completion and the expected visible nicknames for every match.
+
+| Match | Host | Joiner | Observed result | NATNeg session |
+|---|---|---|---|---|
+| 1 | S20: `nick786.74` | S4: `nick3552.75` | Forced collision; S4 requested `nick3552`, received `433`, retried and was accepted; S20 sent host launch. | `13ad9aaa` |
+| 2 | S20: `nick786` | S4: `nick3552` | Reservations released; S4 requested its original name once and received `001` without `433`; S20 launched with its original name. | `131048ec` |
+| 3 | S4: `nick3552.74` | S20: `nick786.34` | Reservations restored; S4 requested its original name, received `433`, retried and was accepted, then sent host launch. | `457fcdb7` |
+| 4 | S4: `nick3552` | S20: `nick786` | Reservations released; S4 requested its original name once and received `001` without `433`, then launched; S20 joined with its original name. | `0edfad59` |
+
+The S20 game PID remained `22445` and the S4 PID remained `20146` throughout all four matches. Read-only S4 memory checks after the collision matches still found configured preference `nick3552`; the temporary accepted aliases did not overwrite it. These no-restart cycles verify preferred-name restoration with either physical phone hosting.
+
+The reservation fixture ran over VPS loopback, held both original names without joining rooms, and released each with `QUIT` followed by server EOF. Successful acceptance/release probes and zero established PeerChat sockets preceded each free-name reconnect. The final fixture exited successfully; its remote script and the S4 capture binary/file were removed after evidence export. The FruitSpy service remained active and no PeerChat connections remained. No server code or game preferences were changed.
+
+The final S4 capture contains 1,419 complete packets with zero kernel drops. It directly captures all four S4 registrations and the S20's forwarded room/launch or negotiation messages, not the S20's direct registration handshake. Every server session records successful reports from both peers, relay establishment, and gameplay forwarding; observed relay metrics reported zero drops, not a measurement of all network packet loss.
+
 ### Remaining runtime boundaries
 
-The preferred-name restoration revision's remaining user-operated test uses the S20 on mobile data and S4 on Wi-Fi: force a collision and complete a match, confirm server-side release of the original name, then reconnect without restarting the game and verify the original configured name is requested and accepted. Repeat with the other phone hosting. Capture registration evidence rather than relying on the displayed suffix alone.
+The S20/S4 physical qualification above covers the revised request hook and both hosting roles on `armeabi-v7a`, including original-name restoration without restarting either game.
 
 Further x86 device testing on this workstation is discontinued at the user's direction. The user reported that known emulator instability, unrelated to this project, caused a PC softlock. The interrupted revised-build attempt supplies no completed-match result. The release decision relies on existing native checks and historical live evidence, with remaining x86 issues to be handled through public-release issue tracking and user feedback.
 
-No physical legacy `armeabi` device was tested. The earlier five live matches used relay transport, not direct peer-to-peer gameplay. Their emulator capture contains its own registration handshake and the S20's relayed room/launch messages, not the S20's direct handshake. No live `PEERComplete` or simultaneous S20 SDK/cache memory snapshot was taken.
+No physical legacy `armeabi` device was tested. Both the historical five-match series and the revised four-match physical series used relay transport, not direct peer-to-peer gameplay. The historical emulator capture and current S4 capture contain their own registration handshakes and the S20's forwarded messages, not its direct handshake. No live `PEERComplete` or simultaneous S20 SDK/cache memory snapshot was taken.
 
 ## Sources and retained evidence
 
@@ -179,4 +196,5 @@ No physical legacy `armeabi` device was tested. The earlier five live matches us
 - SDK public contracts: [peerConnectCallback and peerGetNick](https://github.com/GameProgressive/UniSpySDK/blob/master/Peer/peer.h), [peerStartGame implementation](https://github.com/GameProgressive/UniSpySDK/blob/master/Peer/peerMain.c), and [player state layout](https://github.com/GameProgressive/UniSpySDK/blob/master/Peer/peerPlayers.h). The deployed binary, not an assumed SDK source version, determines the patch offsets.
 - Original private investigation directory: `fruitspy-s20-pair-20260908T010926Z`, containing the decoded PeerChat exchange, final packet capture, native disassembly excerpts, and root-cause report. These captures and proprietary disassemblies are intentionally excluded from Git.
 - Controlled post-fix private evidence directory: `build/controlled-20260908T033105Z`, containing the final 1,573-packet emulator capture, decoded PeerChat streams, server journals, device/build checks, fixture-release probes, and per-match/user observations. Raw captures and connection details remain excluded from Git.
+- Revised physical-pair private evidence directory: `build/physical-pair-20260909T000211Z`, containing the final 1,419-packet S4 capture, four decoded PeerChat streams, server journal, installed-build checks, unchanged process IDs, fixture-release evidence, and per-match/user observations. Final capture SHA-256: `5f7936cdbb8eaa5164236ce2b4f22f9b5babe65229b6420577c1a4ec0590df7d`. Raw captures and connection details remain excluded from Git.
 - `analysis/evidence.json` records the implementation/build identifiers and machine-verification results without copying those private artifacts.

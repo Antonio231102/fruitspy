@@ -227,7 +227,8 @@
       "Galaxy S4 SGH-I337M (armeabi-v7a)",
       "Android emulator (x86; further device testing discontinued)"
     ],
-    "post_fix_live_match_completed": false,
+    "post_fix_live_match_completed": true,
+    "physical_armeabi_v7a_qualified": true,
     "physical_armeabi_qualified": false,
     "x86_runtime_policy": {
       "further_device_testing": false,
@@ -236,7 +237,70 @@
       "remaining_issues": "Public-release issue tracking and user feedback",
       "existing_native_and_historical_evidence_retained": true
     },
-    "limitation": "Revised APK installed and hash-verified; physical-pair live testing is pending on the S20 and S4, both armeabi-v7a. Earlier five-match evidence belongs to the historical callback-only build. No further x86 device testing is planned. All game UI actions remain user-only."
+    "live_qualification": {
+      "date_utc": "2026-09-09",
+      "completed_matches": 4,
+      "completion_evidence": "User reports; all game UI actions were user-only.",
+      "devices": [
+        "Galaxy S20 on cellular (armeabi-v7a)",
+        "Galaxy S4 SGH-I337M on Wi-Fi (armeabi-v7a)"
+      ],
+      "installed_apk_sha256": "5dc4a4f96a1efcc3cb7de8597124cb8b62fc747c5c1fe7cc0548e47ac4748eb6",
+      "transport": "relay",
+      "game_processes_unchanged_across_all_matches": {
+        "s20_pid": 22445,
+        "s4_pid": 20146
+      },
+      "matches": [
+        {
+          "host": "S20",
+          "host_nickname": "nick786.74",
+          "joiner_nickname": "nick3552.75",
+          "original_names_reserved": true,
+          "s4_requested_nickname": "nick3552",
+          "s4_433_and_retry_observed": true,
+          "natneg_session": "13ad9aaa"
+        },
+        {
+          "host": "S20",
+          "host_nickname": "nick786",
+          "joiner_nickname": "nick3552",
+          "original_names_reserved": false,
+          "s4_requested_nickname": "nick3552",
+          "s4_433_and_retry_observed": false,
+          "preferred_name_restoration_without_restart": true,
+          "natneg_session": "131048ec"
+        },
+        {
+          "host": "S4",
+          "host_nickname": "nick3552.74",
+          "joiner_nickname": "nick786.34",
+          "original_names_reserved": true,
+          "s4_requested_nickname": "nick3552",
+          "s4_433_and_retry_observed": true,
+          "natneg_session": "457fcdb7"
+        },
+        {
+          "host": "S4",
+          "host_nickname": "nick3552",
+          "joiner_nickname": "nick786",
+          "original_names_reserved": false,
+          "s4_requested_nickname": "nick3552",
+          "s4_433_and_retry_observed": false,
+          "preferred_name_restoration_without_restart": true,
+          "natneg_session": "0edfad59"
+        }
+      ],
+      "host_launch_and_relay_forwarding_observed_for_all_matches": true,
+      "both_clients_reported_natneg_success_for_all_matches": true,
+      "s4_configured_preference_after_collision_matches": "nick3552",
+      "fixture_cleanup": "VPS-loopback reservations released with server EOF; both original names accepted and released by availability probes, with zero established PeerChat sockets before each reconnect. Fixture exited and remote helper/capture artifacts were removed after export. Service active and zero established PeerChat sockets at completion.",
+      "final_capture_packets": 1419,
+      "capture_kernel_drops": 0,
+      "final_capture_sha256": "5f7936cdbb8eaa5164236ce2b4f22f9b5babe65229b6420577c1a4ec0590df7d",
+      "private_evidence_directory": "build/physical-pair-20260909T000211Z"
+    },
+    "limitation": "Both physical phones execute armeabi-v7a; no physical legacy armeabi or direct peer-to-peer gameplay qualification. S4 registration handshakes captured directly; S20 accepted identities observed in forwarded messages, not its direct registration handshake. No simultaneous live SDK/cache snapshot. Earlier five-match evidence belongs to the historical callback-only build; no further x86 device testing is planned."
   },
   "historical_callback_only_build": {
     "signed_apk_sha256": "917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1",
