@@ -222,10 +222,21 @@
     ]
   },
   "device_validation": {
-    "update_install_succeeded": [],
+    "update_install_succeeded": [
+      "Galaxy S20 (armeabi-v7a)",
+      "Galaxy S4 SGH-I337M (armeabi-v7a)",
+      "Android emulator (x86; further device testing discontinued)"
+    ],
     "post_fix_live_match_completed": false,
     "physical_armeabi_qualified": false,
-    "limitation": "Preferred-name restoration revision has not been installed or live-qualified. Earlier five-match evidence belongs to the historical callback-only build. All game UI actions remain user-only."
+    "x86_runtime_policy": {
+      "further_device_testing": false,
+      "reason": "User-reported known emulator instability unrelated to this project caused a workstation softlock.",
+      "interrupted_revised_attempt_counted_as_pass": false,
+      "remaining_issues": "Public-release issue tracking and user feedback",
+      "existing_native_and_historical_evidence_retained": true
+    },
+    "limitation": "Revised APK installed and hash-verified; physical-pair live testing is pending on the S20 and S4, both armeabi-v7a. Earlier five-match evidence belongs to the historical callback-only build. No further x86 device testing is planned. All game UI actions remain user-only."
   },
   "historical_callback_only_build": {
     "signed_apk_sha256": "917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1",

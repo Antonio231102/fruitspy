@@ -137,7 +137,7 @@ This is native function execution with constructed protocol state, not a live ne
 
 - v1, v2, and v3 verification passed; v4 is intentionally disabled by the shared signer. `zipalign` verification passed.
 - Native smoke execution from the revised signed APK's actual three libraries confirms successful renamed hosting and a subsequent original-name request/acceptance.
-- This revision has not been installed. The earlier callback-only build was installed with `adb install -r` on both devices without uninstalling or clearing data.
+- The revised APK was update-installed and hash-verified on the S20, S4, and emulator without uninstalling or clearing data. The S20 and S4 both use `armeabi-v7a`; the emulator used `x86`.
 
 ### Historical live qualification: callback-only build
 
@@ -167,7 +167,9 @@ A displayed suffix does not establish that the current registration collided. Ma
 
 ### Remaining runtime boundaries
 
-The preferred-name restoration revision requires user-operated live verification: force a collision and complete a match, confirm server-side release of the original name, then reconnect without restarting the game and verify the original configured name is requested and accepted. Repeat with the other device hosting. Capture registration evidence rather than relying on the displayed suffix alone.
+The preferred-name restoration revision's remaining user-operated test uses the S20 on mobile data and S4 on Wi-Fi: force a collision and complete a match, confirm server-side release of the original name, then reconnect without restarting the game and verify the original configured name is requested and accepted. Repeat with the other phone hosting. Capture registration evidence rather than relying on the displayed suffix alone.
+
+Further x86 device testing on this workstation is discontinued at the user's direction. The user reported that known emulator instability, unrelated to this project, caused a PC softlock. The interrupted revised-build attempt supplies no completed-match result. The release decision relies on existing native checks and historical live evidence, with remaining x86 issues to be handled through public-release issue tracking and user feedback.
 
 No physical legacy `armeabi` device was tested. The earlier five live matches used relay transport, not direct peer-to-peer gameplay. Their emulator capture contains its own registration handshake and the S20's relayed room/launch messages, not the S20's direct handshake. No live `PEERComplete` or simultaneous S20 SDK/cache memory snapshot was taken.
 
