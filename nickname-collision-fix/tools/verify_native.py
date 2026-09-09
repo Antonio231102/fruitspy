@@ -10,13 +10,16 @@ from __future__ import annotations
 import argparse
 import json
 import struct
+import sys
 import zipfile
 from pathlib import Path
 
 from unicorn import Uc, UC_ARCH_ARM, UC_ARCH_X86, UC_MODE_ARM, UC_MODE_32, UC_HOOK_CODE, UC_HOOK_MEM_WRITE
 from unicorn import arm_const as arm, x86_const as x86
 
-from nickname_patch import PATCHES, base, patch_library
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from patcher import patch_apk as base
+from patcher.nickname_patch import PATCHES, patch_library
 
 HEAP = 0x70000000
 STACK = 0x71000000

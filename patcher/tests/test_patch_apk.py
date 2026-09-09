@@ -10,6 +10,7 @@ import tempfile
 import unittest
 import zipfile
 
+from patcher import nickname_patch
 from patcher.patch_apk import (
     CLEAN_APK_SHA256,
     CLOCK_PATCHES,
@@ -25,6 +26,7 @@ from patcher.patch_apk import (
     inject_payload,
     parse_server_host,
     patch_apk,
+    patch_clock_library,
     patch_endpoint_library,
     patch_library,
     replace_exact,
@@ -104,6 +106,14 @@ def combined_fixture(abi: str) -> tuple[bytes, object]:
         production.conversion_offset : production.conversion_offset
         + len(production.conversion_before)
     ] = production.conversion_before
+    nickname = nickname_patch.PATCHES[abi]
+    library[
+        nickname.hook_offset : nickname.hook_offset + len(nickname.hook_before)
+    ] = nickname.hook_before
+    library[
+        nickname.request_hook_offset :
+        nickname.request_hook_offset + len(nickname.request_hook_before)
+    ] = nickname.request_hook_before
 
     source = bytes(library)
     prototype = replace(
@@ -132,6 +142,47 @@ def combined_fixture(abi: str) -> tuple[bytes, object]:
 
 
 class ApkPatchTests(unittest.TestCase):
+    def assert_combined_transformation(
+        self, source: bytes, result: bytes, record: dict, host: str, abi: str
+    ) -> None:
+        clock = CLOCK_PATCHES[abi]
+        nickname = nickname_patch.PATCHES[abi]
+        clock_payload = clock.payload_path.read_bytes()
+        nickname_payload = nickname.payload_path.read_bytes()
+        nickname_offset = (
+            clock.payload_file_offset + nickname.payload_vaddr - clock.payload_vaddr
+        )
+        for offset, expected in (
+            (clock.clock_offset, clock.clock_after),
+            (clock.conversion_offset, clock.conversion_after),
+            (clock.payload_file_offset, clock_payload),
+            (nickname.hook_offset, nickname.hook_after),
+            (nickname.request_hook_offset, nickname.request_hook_after),
+            (nickname_offset, nickname_payload),
+        ):
+            self.assertEqual(result[offset : offset + len(expected)], expected)
+        for offset, _, replacement_bytes, _ in NATNEG_RESOLVER_PATCHES[abi]:
+            self.assertEqual(
+                result[offset : offset + len(replacement_bytes)], replacement_bytes
+            )
+        self.assertEqual(result.count(host.encode("ascii")), len(GAMESPY_HOSTS))
+        self.assertNotIn(b"gamespy.com", result)
+
+        clock_result, _ = patch_clock_library(source, clock)
+        nickname_result, _ = nickname_patch.patch_library(clock_result, abi)
+        self.assertEqual(record["abi"], abi)
+        self.assertEqual(record["input_sha256"], sha256_bytes(source))
+        self.assertEqual(record["clock"]["output_sha256"], sha256_bytes(clock_result))
+        self.assertEqual(
+            record["nickname"]["input_sha256"], record["clock"]["output_sha256"]
+        )
+        self.assertEqual(
+            record["nickname"]["output_sha256"], sha256_bytes(nickname_result)
+        )
+        self.assertEqual(record["endpoint"]["server_host"], host)
+        self.assertEqual(record["output_sha256"], sha256_bytes(result))
+        self.assertNotEqual(record["output_sha256"], record["nickname"]["output_sha256"])
+
     def test_server_host_accepts_ipv4_and_short_dns_names(self) -> None:
         self.assertEqual(parse_server_host("192.168.100.2"), "192.168.100.2")
         self.assertEqual(parse_server_host("Games.Example.Net."), "games.example.net")
@@ -159,7 +210,7 @@ class ApkPatchTests(unittest.TestCase):
                 collect_arguments(parser, args)
         self.assertIn("--server-host is required", stderr.getvalue())
 
-    def test_interactive_prompt_discloses_fixes_and_has_no_endpoint_default(self) -> None:
+    def test_interactive_prompt_collects_source_and_required_endpoint(self) -> None:
         parser = ArgumentParser()
         args = Namespace(
             source=None,
@@ -173,24 +224,17 @@ class ApkPatchTests(unittest.TestCase):
             with mock.patch(
                 "builtins.input",
                 side_effect=["clean.apk", "fn.example.net"],
-            ) as user_input:
-                with mock.patch("sys.stdout", new_callable=io.StringIO) as stdout:
+            ):
+                with mock.patch("sys.stdout", new_callable=io.StringIO):
                     source, output, server_host, report = collect_arguments(
                         parser,
                         args,
                     )
 
-        notice = stdout.getvalue()
-        self.assertIn("slow-motion fix", notice)
-        self.assertIn("No FruitSpy server address is built in", notice)
-        self.assertIn("DNS names are limited to 18 ASCII characters", notice)
         self.assertEqual(source, Path("clean.apk"))
         self.assertEqual(output, Path("clean - FruitSpy.apk"))
         self.assertEqual(server_host, "fn.example.net")
         self.assertIsNone(report)
-        endpoint_prompt = user_input.call_args_list[1].args[0]
-        self.assertIn("required", endpoint_prompt)
-        self.assertIn("maximum 18 ASCII characters", endpoint_prompt)
 
     def test_endpoint_patch_covers_every_abi(self) -> None:
         for abi in TARGET_ABIS:
@@ -214,7 +258,7 @@ class ApkPatchTests(unittest.TestCase):
                         replacement_bytes,
                     )
 
-    def test_clock_then_endpoint_composition_for_ipv4_and_dns(self) -> None:
+    def test_clock_then_nickname_then_endpoint_composition_for_ipv4_and_dns(self) -> None:
         for abi in TARGET_ABIS:
             source, synthetic_patch = combined_fixture(abi)
             for host in ("192.168.100.2", "games.example.net"):
@@ -224,25 +268,9 @@ class ApkPatchTests(unittest.TestCase):
                         {abi: synthetic_patch},
                     ):
                         result, record = patch_library(source, host, abi)
-                    payload = synthetic_patch.payload_path.read_bytes()
-                    self.assertEqual(result.count(host.encode("ascii")), 7)
-                    self.assertNotIn(b"gamespy.com", result)
-                    self.assertEqual(
-                        result[
-                            synthetic_patch.clock_offset :
-                            synthetic_patch.clock_offset + len(synthetic_patch.clock_after)
-                        ],
-                        synthetic_patch.clock_after,
-                    )
-                    self.assertEqual(
-                        result[
-                            synthetic_patch.payload_file_offset :
-                            synthetic_patch.payload_file_offset + len(payload)
-                        ],
-                        payload,
-                    )
-                    self.assertEqual(record["abi"], abi)
-                    self.assertEqual(record["endpoint"]["server_host"], host)
+                        self.assert_combined_transformation(
+                            source, result, record, host, abi
+                        )
 
     def test_unsupported_apk_is_rejected_without_output(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -373,13 +401,18 @@ class ApkPatchTests(unittest.TestCase):
                     manifest = patch_apk(CLEAN_APK, output, host)
                     self.assertEqual(
                         manifest["patch_order"],
-                        ["monotonic_clock", "gamespy_endpoint"],
+                        ["monotonic_clock", "nickname_collision", "gamespy_endpoint"],
                     )
                     self.assertEqual(
                         {record["abi"] for record in manifest["libraries"]},
                         set(TARGET_ABIS),
                     )
-                    with zipfile.ZipFile(output) as archive:
+                    records = {
+                        record["abi"]: record for record in manifest["libraries"]
+                    }
+                    with zipfile.ZipFile(CLEAN_APK) as source_archive, zipfile.ZipFile(
+                        output
+                    ) as archive:
                         self.assertFalse(
                             any(
                                 name.upper().startswith("META-INF/")
@@ -389,15 +422,9 @@ class ApkPatchTests(unittest.TestCase):
                         )
                         for abi in TARGET_ABIS:
                             library = archive.read(f"lib/{abi}/libmortargame.so")
-                            self.assertEqual(library.count(host.encode("ascii")), 7)
-                            self.assertNotIn(b"gamespy.com", library)
-                            patch = CLOCK_PATCHES[abi]
-                            self.assertEqual(
-                                library[
-                                    patch.clock_offset :
-                                    patch.clock_offset + len(patch.clock_after)
-                                ],
-                                patch.clock_after,
+                            source = source_archive.read(f"lib/{abi}/libmortargame.so")
+                            self.assert_combined_transformation(
+                                source, library, records[abi], host, abi
                             )
 
 

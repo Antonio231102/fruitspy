@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import struct
-import sys
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT.parent))
-from patcher import patch_apk as base
+from . import patch_apk as base
+
+ROOT = Path(__file__).resolve().parent.parent / "nickname-collision-fix"
 
 
 @dataclass(frozen=True)
@@ -92,7 +91,7 @@ PATCHES = {
 
 
 def patch_library(data: bytes, abi: str) -> tuple[bytes, dict[str, object]]:
-    """Apply after the repository's validated clock and endpoint transformations."""
+    """Apply after the validated clock transformation and before custom endpoints."""
     patch = PATCHES[abi]
     base.verify_elf32(data, abi)
     payload = patch.payload_path.read_bytes()

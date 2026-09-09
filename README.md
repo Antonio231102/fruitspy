@@ -7,6 +7,7 @@ FruitSpy is a standalone GameSpy-compatible multiplayer service for Fruit Ninja 
 - `server/` — standalone GameSpy-compatible services, deployment configuration, and protocol tests.
 - `patcher/` — neutral interactive/non-interactive APK patcher, automatic local signing workflow, and patcher tests.
 - `slow-motion-fix/` — slow-motion investigation, validation records, native payload source, reproducible payload binaries, and payload build tooling.
+- `nickname-collision-fix/` — matchmaking-fix investigation, qualification records, native payload source/binaries, and native build and regression tools.
 
 ## Checkpoint 1: LAN multiplayer
 
@@ -159,7 +160,7 @@ Fruit Ninja's linked GameSpy SDK contains an unused `CDKEY` command path, but th
 
 ## Patch a locally owned APK
 
-The repository does not distribute Fruit Ninja or a prebuilt APK. The patcher accepts only the clean Fruit Ninja 1.7.6 APK with SHA-256 `5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650`. It bundles the monotonic-clock slow-motion fix followed by the configurable FruitSpy endpoint patch for `armeabi`, `armeabi-v7a`, and `x86`, removes the obsolete APK signature, aligns the result, and signs it.
+The repository does not distribute Fruit Ninja or a prebuilt APK. The patcher accepts only the clean Fruit Ninja 1.7.6 APK with SHA-256 `5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650`. For `armeabi`, `armeabi-v7a`, and `x86`, it applies the **slow-motion fix → matchmaking fix → custom server patch**, in that order. The matchmaking fix keeps the game's session identity synchronized after nickname collisions and restores the configured nickname for each new connection; it does not fix server-side dead sessions. The patcher then removes the obsolete APK signature, aligns the result, and signs it.
 
 For the guided workflow:
 
@@ -179,7 +180,7 @@ Replace `192.168.100.2` with the local or remote IPv4 address reachable by the d
 
 Automatic signing requires a JDK `keytool` and Android SDK Build Tools containing `zipalign` and `apksigner`. The patcher discovers them from `PATH`, `JAVA_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_HOME`, and standard SDK locations. Explicit `--keytool`, `--zipalign`, `--apksigner`, and `--android-sdk` paths are also supported.
 
-On the first signed build, the patcher generates a random local RSA signing identity and stores it under `%LOCALAPPDATA%\FruitSpy` on Windows, `~/Library/Application Support/FruitSpy` on macOS, or `${XDG_DATA_HOME:-~/.local/share}/fruitspy` on Linux. Subsequent builds reuse that identity so they can update an existing FruitSpy installation. Back up this directory: losing it requires uninstalling the existing patched app before installing a build signed by a replacement key. Never upload the keystore, its `signing.json`, generated APKs, or manifests containing deployment-specific addresses to the repository.
+On the first signed build, the patcher generates a random local RSA signing identity and stores it under `%LOCALAPPDATA%\FruitSpy` on Windows, `~/Library/Application Support/FruitSpy` on macOS, or `${XDG_DATA_HOME:-~/.local/share}/fruitspy` on Linux. Use `--signing-dir PATH` to select a different local signing directory. Subsequent builds reuse that identity so they can update an existing FruitSpy installation. Back up this directory: losing it requires uninstalling the existing patched app before installing a build signed by a replacement key. Never upload the keystore, its `signing.json`, generated APKs, or manifests containing deployment-specific addresses to the repository.
 
 Use `--unsigned` only when an unsigned, unaligned intermediate is required. That mode does not require Java or Android Build Tools; alignment and signing must then be completed before installation.
 
@@ -192,7 +193,7 @@ cd ..
 python -m unittest patcher.tests.test_patch_apk
 ```
 
-The server suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, activity-aware relay idle expiry, byte and packet limits, and global relay capacity. The separate patcher suite covers deterministic clock/endpoint composition, all three ABIs, neutral endpoint input, local key persistence, alignment, and signing verification.
+The server suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, activity-aware relay idle expiry, byte and packet limits, and global relay capacity. The separate patcher suite covers deterministic clock/nickname/endpoint composition, all three ABIs, neutral endpoint input, local key persistence, alignment, and signing verification.
 
 The fuzz regressions use a deterministic mutation corpus against QR2 and NatNeg datagrams, Server Browser frames and filters, and encrypted PeerChat commands. The default case count keeps the complete suite fast:
 

@@ -81,13 +81,23 @@ The original game host predicates exercised by the regression harness are `0x19c
 
 ### Payload placement and input safety
 
-The standalone builder starts from the same fully allowlisted clean APK as the shared patcher. It applies the shared clock and endpoint transformations first. The nickname helper follows the existing clock payload in the executable load segment; x86 adds three zero alignment bytes before its helper.
+The canonical builder, `patcher/patch_apk.py`, starts from the fully allowlisted clean APK and applies the **slow-motion fix → matchmaking fix → custom server patch**. The nickname implementation is `patcher/nickname_patch.py`; native payloads and their build/regression tools remain under `nickname-collision-fix/`. The nickname helper follows the existing clock payload in the executable load segment; x86 adds three zero alignment bytes before its helper.
 
 The existing ELF injector performs placement, zero-gap, segment-overlap, alignment, and file-offset checks. The nickname stage supplies an updated placement descriptor without changing the clock payload. Exact original hook bytes and both payload hashes are required. Duplicate patching and altered hook instructions are rejected.
 
 The shared APK builder/signing routines retain responsibility for removing obsolete signatures, selecting the existing signing identity, alignment, and signature verification. No proprietary game library or signing key is included in this subproject.
 
+The manifest records `patch_order` as `["monotonic_clock", "nickname_collision", "gamespy_endpoint"]` and each library's `clock`, `nickname`, and `endpoint` stages. The nickname input hash matches the clock output hash; the final library hash includes the endpoint patch.
+
 ## Verification performed
+
+The original qualification artifacts used the former standalone workflow, which applied clock and endpoint transformations before the nickname stage. The main patcher now applies clock, nickname, then endpoints; integration leaves the native payloads unchanged.
+
+### Main-patcher integration
+
+On 2026-09-09, the actual guided CLI announced the slow motion fix patch, matchmaking fix patch, and custom server patch in that order, accepted the custom endpoint, and completed a signed build. The manifest recorded the three ordered stages, with each nickname input hash matching its clock output hash. All nine patcher tests passed, including real-APK IPv4/DNS composition across all ABIs; the migrated native harness passed all 66 scenarios.
+
+With the same endpoint and signing key, the integrated output APK was byte-identical to the previously qualified build: SHA-256 `5dc4a4f96a1efcc3cb7de8597124cb8b62fc747c5c1fe7cc0548e47ac4748eb6`. All three native libraries and every non-signature APK entry matched; v1/v2/v3 signatures and ZIP alignment passed. The new manifest reflects the actual integration order rather than the historical builder's order. No additional device matches were run or required to establish binary identity. The private integration report is `build/integrated-patcher-proof.json`.
 
 ### Native execution: all three ABIs
 

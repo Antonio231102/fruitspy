@@ -10,7 +10,9 @@ Compatibility investigation and native fix for Fruit Ninja 1.7.6. This subprojec
 - Native payload source and reproducible machine-code payloads are included.
 - An earlier wall-clock prototype corrected slow motion on an Android 9 x86 emulator and remained synchronized with an Android 4.4.2 ARMv7 device.
 - The hardened ARMv7 implementation completed direct and relayed multiplayer games on Android 4.4.2 and Android 13 devices.
-- Quantitative timing, lifecycle-gap, hardened x86, and legacy `armeabi` runtime qualification remain pending.
+- The hardened x86 implementation and final Unified APK restored normal pace by user report; x86 background/resume and sleep/wake behavior passed.
+- Exact-duration tests were waived in favor of qualitative speed confirmation plus emulator-to-real-device LAN synchronization. The final Unified APK passed three consecutive Android 9 x86 emulator-to-Galaxy S4 games with no desynchronization or disconnects, by user report.
+- Emulator graphics/host-crash issues are excluded under the user's Intel-driver assumption, not a proven root cause. This does not exclude the earlier S4 native socket crash. Legacy `armeabi`, long-session wrap, and broader runtime coverage remain pending.
 
 See `FINDINGS.md` for the evidence and implementation details, `VALIDATION.md` for the recorded validation boundary, `MANUAL_TEST_PLAN.md` for physical-device checks, and `ROADMAP.md` for remaining compatibility work.
 
@@ -49,7 +51,7 @@ Use the neutral combined patcher from the repository root:
 python patcher/patch_apk.py
 ```
 
-The patcher accepts only the allowlisted clean Fruit Ninja 1.7.6 APK, tells the user that the slow-motion fix is bundled, requires a user-supplied IPv4 address or short DNS name, applies the clock fix followed by the endpoint patch to all three ABIs, and verifies the signed output. See the root `README.md` for complete patching and signing instructions.
+The patcher accepts only the allowlisted clean Fruit Ninja 1.7.6 APK, announces the slow motion fix patch, matchmaking fix patch, and custom server patch in that order, requires a user-supplied IPv4 address or short DNS name, applies all three patches to every packaged ABI, and verifies the signed output. See the root `README.md` for complete patching and signing instructions.
 
 ## Repository boundary
 

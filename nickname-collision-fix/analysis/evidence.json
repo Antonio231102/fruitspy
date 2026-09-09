@@ -12,6 +12,20 @@
       "v4": false
     }
   },
+  "main_patcher_integration": {
+    "date_utc": "2026-09-09",
+    "entry_point": "patcher/patch_apk.py",
+    "patch_order": ["monotonic_clock", "nickname_collision", "gamespy_endpoint"],
+    "guided_cli_verified": true,
+    "patcher_tests_passed": 9,
+    "native_scenarios_passed": 66,
+    "signed_apk_identical_to_qualified_build": true,
+    "signed_apk_sha256": "5dc4a4f96a1efcc3cb7de8597124cb8b62fc747c5c1fe7cc0548e47ac4748eb6",
+    "nickname_input_matches_clock_output": true,
+    "native_payloads_unchanged": true,
+    "additional_device_matches": 0,
+    "private_evidence_file": "build/integrated-patcher-proof.json"
+  },
   "libraries": [
     {
       "abi": "armeabi",

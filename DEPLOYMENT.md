@@ -175,7 +175,7 @@ python patcher/patch_apk.py original.apk patched.apk \
   --non-interactive
 ```
 
-The patcher rejects any whole-APK hash other than the supported clean release, applies the clock and endpoint transformations to all three packaged ABIs, and writes a manifest beside the output. By default it discovers JDK `keytool` plus Android SDK `zipalign` and `apksigner`, creates a random per-user signing key on the first run, aligns and signs the APK, and verifies both alignment and its legacy-compatible v1 signature. Later builds reuse the same local identity for update compatibility.
+The patcher rejects any whole-APK hash other than the supported clean release, applies the slow-motion fix, matchmaking fix, and custom server patch in that order to all three packaged ABIs, and writes a manifest beside the output. By default it discovers JDK `keytool` plus Android SDK `zipalign` and `apksigner`, creates a random per-user signing key on the first run, aligns and signs the APK, and verifies both alignment and its legacy-compatible v1 signature. Later builds reuse the same local identity for update compatibility.
 
 Back up the FruitSpy signing directory documented in `README.md`. Losing it requires uninstalling the existing patched application before installing a build signed by a new key. Never upload source or generated APKs, signing keys, signing passwords, deployment manifests, packet captures, or device identifiers to the repository.
 

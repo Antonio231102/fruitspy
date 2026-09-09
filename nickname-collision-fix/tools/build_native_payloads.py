@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
-from nickname_patch import PATCHES, base
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from patcher import patch_apk as base
+from patcher.nickname_patch import PATCHES
 
 
 def main() -> int:

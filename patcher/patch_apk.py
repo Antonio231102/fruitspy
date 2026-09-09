@@ -455,13 +455,17 @@ def patch_endpoint_library(
 
 
 def patch_library(data: bytes, server_host: str, abi: str) -> tuple[bytes, dict[str, object]]:
+    from patcher.nickname_patch import patch_library as patch_nickname_library
+
     clock_result, clock_record = patch_clock_library(data, CLOCK_PATCHES[abi])
-    result, endpoint_records = patch_endpoint_library(clock_result, server_host, abi)
+    nickname_result, nickname_record = patch_nickname_library(clock_result, abi)
+    result, endpoint_records = patch_endpoint_library(nickname_result, server_host, abi)
     return result, {
         "abi": abi,
         "library": f"lib/{abi}/{LIBRARY}",
         "input_sha256": sha256_bytes(data),
         "clock": clock_record,
+        "nickname": nickname_record,
         "endpoint": {
             "server_host": server_host,
             "patch_count": len(endpoint_records),
@@ -530,7 +534,7 @@ def patch_apk(source: Path, output: Path, server_host: str) -> dict[str, object]
             "apk_sha256": source_hash,
             "allowlisted_apk_sha256": CLEAN_APK_SHA256,
         },
-        "patch_order": ["monotonic_clock", "gamespy_endpoint"],
+        "patch_order": ["monotonic_clock", "nickname_collision", "gamespy_endpoint"],
         "server_host": server_host,
         "removed_signature_entries": sorted(removed_signatures),
         "libraries": records,
@@ -970,8 +974,8 @@ def collect_arguments(
     interactive = not args.non_interactive and sys.stdin.isatty()
     if interactive:
         print(
-            "This build will include the monotonic-clock slow-motion fix "
-            "for all three packaged ABIs."
+            "This build will apply the slow motion fix patch, matchmaking fix patch, "
+            "and custom server patch, in that order."
         )
         print("No FruitSpy server address is built in; you must supply one.")
         print(
@@ -1017,9 +1021,9 @@ def collect_arguments(
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Build a Fruit Ninja 1.7.6 APK with the monotonic-clock "
-            "slow-motion fix and a user-supplied FruitSpy endpoint patch "
-            "for all three packaged ABIs. No server address is predefined."
+            "Build a Fruit Ninja 1.7.6 APK with the slow motion fix patch, "
+            "matchmaking fix patch, and custom server patch, in that order. "
+            "No server address is predefined."
         )
     )
     parser.add_argument("source", nargs="?", type=Path)
@@ -1068,8 +1072,8 @@ def main() -> int:
     mode = "unsigned" if args.unsigned else "signed and verified"
     print(f"Created {mode} APK: {output}")
     print(
-        "Bundled the monotonic-clock slow-motion fix and patched "
-        f"{len(manifest['libraries'])} ABI libraries."
+        "Applied the slow motion fix patch, matchmaking fix patch, and custom "
+        f"server patch to all {len(manifest['libraries'])} packaged libraries."
     )
     if report is not None:
         print(f"Manifest: {report}")
@@ -1085,4 +1089,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     raise SystemExit(main())

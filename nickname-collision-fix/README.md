@@ -1,8 +1,10 @@
 # Fruit Ninja 1.7.6 nickname-collision correction
 
-Standalone native correction for `armeabi`, `armeabi-v7a`, and `x86`. Before each new PeerChat connection, the game refreshes its network nickname from the configured nickname. After acceptance, it copies the SDK's actual nickname into its cached session identity **before** publishing connection success. A collision suffix therefore remains authoritative during the match without becoming the preferred name for the next connection.
+Native matchmaking fix for `armeabi`, `armeabi-v7a`, and `x86`, included in the main APK patcher. Before each new PeerChat connection, the game refreshes its network nickname from the configured nickname. After acceptance, it copies the SDK's actual nickname into its cached session identity **before** publishing connection success. A collision suffix therefore remains authoritative during the match without becoming the preferred name for the next connection. This is a client fix, not a fix for server-side dead sessions.
 
 ## Status and boundary
+
+The guided main-patcher build was verified on 2026-09-09: it applies the requested three-stage order and produces a signed APK byte-identical to the previously qualified `build/FruitSpy-Nickname-Fix-Preferred.apk` when using the same endpoint and signing key. All nine patcher tests and 66 native nickname scenarios passed. The physical-gameplay results below remain the original recorded runs, not additional matches.
 
 - All three ABI payloads are implemented, reproducible, and hash-checked.
 - Native execution reproduces both the original renamed-host failure and the previous patch's sticky reconnect name in every ABI, then passes 22 corrected scenarios per ABI at two load addresses (66 total).
@@ -17,7 +19,7 @@ Standalone native correction for `armeabi`, `armeabi-v7a`, and `x86`. Before eac
 - The configured nickname is not edited or suffix-stripped. Each connection requests it exactly, including an intentional numeric suffix; an empty setting leaves the game's existing generated candidate unchanged.
 - Actual ARMv5/ARMv6 hardware and direct Internet NAT traversal remain unqualified; direct LAN gameplay is qualified. Actual legacy-hardware tests are not a release gate at the user's direction; hardware-specific issues go through user feedback and the issue tracker. No further mobile-data or relay-specific testing is planned unless an observed issue makes it necessary. All game UI actions remain user-only. The normal three-ABI release APK is unchanged; the legacy-only APK is a qualification artifact.
 
-This subfolder owns the nickname patch, payload source/binaries, build entry point, regression harness, and findings. It reuses `patcher/patch_apk.py` for the allowlisted clean APK, existing clock/endpoint transformations, ELF insertion, alignment, and signing. The shared patcher, server, and existing Unified APK are not modified. Its installable output includes the existing clock and FruitSpy endpoint fixes rather than returning to the defunct GameSpy endpoints.
+The canonical APK builder is `patcher/patch_apk.py`, with the nickname implementation in `patcher/nickname_patch.py`. It applies the **slow-motion fix → matchmaking fix → custom server patch**, then aligns and signs the APK. This subfolder retains the native payload source/binaries, payload build tools, regression harness, and findings; it no longer provides a separate APK builder. Integration does not change the native payloads or server behavior.
 
 See [FINDINGS.md](FINDINGS.md) for the diagnosis, ABI addresses, implementation invariants, and validation evidence.
 
@@ -26,7 +28,7 @@ See [FINDINGS.md](FINDINGS.md) for the diagnosis, ABI addresses, implementation 
 Run from the repository root with Python 3.10+, a JDK (`keytool`), and Android SDK build-tools (`zipalign`, `apksigner`):
 
 ```text
-python nickname-collision-fix/tools/build_apk.py --source "Fruit Ninja 1.7.6.apk" --output nickname-collision-fix/build/FruitSpy-Nickname-Fix-Preferred.apk --server-host 217.154.27.122
+python patcher/patch_apk.py "Fruit Ninja 1.7.6.apk" "FruitSpy.apk" --server-host 192.168.100.2
 ```
 
 Use your FruitSpy IPv4 address or short DNS hostname for `--server-host`. The source must be the clean Fruit Ninja 1.7.6 APK with SHA-256:
@@ -35,12 +37,12 @@ Use your FruitSpy IPv4 address or short DNS hostname for `--server-host`. The so
 5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650
 ```
 
-The command writes the APK and `<output>.manifest.json`. Existing outputs are refused; choose a fresh filename for another build. The manifest records the base transformations, exact nickname hook bytes, payload and library hashes, and signing verification.
+The command writes the APK and `<output>.manifest.json`. Existing outputs are refused; choose a fresh filename for another build. The manifest records the ordered clock, nickname, and endpoint stages, exact nickname hook bytes, payload and library hashes, and signing verification. The nickname input hash matches the clock output hash; the final library hash includes the custom server patch.
 
-- Signing uses the shared patcher's persistent local key directory. Reuse the key that signed the installed app to preserve update compatibility.
-- `--signing-directory`, `--android-sdk`, `--keytool`, `--zipalign`, and `--apksigner` override discovery.
+- Signing is enabled by default and uses the main patcher's persistent local key directory. Reuse the key that signed the installed app to preserve update compatibility.
+- `--signing-dir PATH` selects that directory; `--android-sdk`, `--keytool`, `--zipalign`, and `--apksigner` override tool discovery.
 - `--unsigned` builds an inspection artifact only; it is not installable as-is.
-- The standalone builder intentionally takes the **clean** APK, not an already patched Unified APK, so its entire transformation chain is validated.
+- The main patcher takes the **clean** APK, not an already patched APK, so its entire transformation chain is validated.
 
 ## Reproduce payloads
 

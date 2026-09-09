@@ -16,7 +16,7 @@ Publish a reproducible, source-only compatibility fix for Fruit Ninja 1.7.6 that
 - [x] Install the exact hardened APK, SHA-256 `ee67e367f06d6cdbdb51ed5c5f9e892f7605439d3ff0876556bd99b856d01b21`, on Android 4.4.2 and Android 13 devices.
 - [x] Smoke-test the hardened ARMv7 runtime path through completed direct and relayed multiplayer games on those physical devices.
 
-The hardened implementation is therefore an ARMv7 runtime-tested candidate. Its quantitative timing behavior, abnormal-delta branch, hardened x86 payload, and legacy `armeabi` payload are not yet release-qualified.
+The hardened implementation has ARMv7 multiplayer runtime evidence and user-confirmed x86 normal-speed, background/resume, and sleep/wake passes. The final Unified x86 emulator and Galaxy S4 completed three consecutive games without desynchronization or disconnects, satisfying the synchronization gate. Both hosting directions, long-session wrap, and legacy `armeabi` runtime coverage remain pending. Emulator graphics/host-crash issues are excluded under the user's Intel-driver assumption; see `VALIDATION.md` for the evidence and limits.
 
 ## Phase 1 — Compose with the FruitSpy client patch
 
@@ -45,23 +45,25 @@ Purpose: verify the final monotonic implementation rather than relying on the ea
 
 ### Primary timing behavior
 
-- [ ] On the known affected Android 9 x86 environment, record two baseline 60-second rounds and two hardened-candidate rounds under unchanged display and power settings.
-- [ ] Confirm each hardened nominal 60-second round lasts 57–63 real seconds.
-- [ ] Repeat the quantitative timing check on the Android 13 physical device using its `armeabi-v7a` package runtime.
-- [ ] Confirm fruit motion, countdowns, particles, menus, and audio no longer exhibit uniform slow motion or synchronization drift.
+- [x] Confirm normal hardened x86 game pace by user observation, including the final Unified APK on Genymotion.
+- [x] Confirm final Unified x86 emulator-to-real-device synchronization: the user reported three consecutive games with the Galaxy S4, without desynchronization or disconnects.
+
+Exact game-length timer tests are waived by user decision. Qualitative normal speed plus emulator-to-device LAN synchronization replaces the measured-duration gate; no exact elapsed-time claim is made.
 
 ### Delta-guard and lifecycle behavior
 
-- [ ] Background an active round for 30 seconds, resume, and verify that physics and the countdown do not jump forward.
-- [ ] Lock the screen for 30 seconds, unlock, and verify the same behavior.
+- [x] Confirm x86 background/resume restores the last gameplay state (user report; interruption duration not measured).
+- [x] Confirm x86 sleep/wake restores the last gameplay state (user report; interruption duration not measured).
+- [x] Confirm lifecycle behavior on physical ARM runtimes: user reports no timing issues after backgrounding or device sleep with `armeabi` on both phones and `armeabi-v7a` on the S20.
 - [ ] Return to the menu and start a new round after each lifecycle interruption.
-- [ ] Run a foreground session beyond 72 minutes and verify continuity across the low-32-bit microsecond wrap.
-- [ ] Exercise visually busy gameplay and high-refresh mode where available to validate the 250 ms cutoff policy under load.
+- [x] Verify low-word wrap and guard boundaries through accelerated execution of all three current ABI timer paths: 72 scenario runs and 222 native frame updates passed at two load bases. A physical foreground run beyond 72 minutes remains optional long-session stability coverage, not required arithmetic verification.
+- [x] Confirm high-refresh game speed: the user reports no speed issues with the S20 set to 120 Hz.
+- [ ] Exercise severe-load behavior to qualify the 250 ms cutoff policy; the 120 Hz pass does not establish guard-branch execution under long frame stalls.
 - [ ] Make `clock_gettime` failure deterministic in the native helper instead of consuming an uninitialized `timespec`, then statically and dynamically verify the chosen fallback.
 
 ### ABI and platform scope
 
-- [ ] Runtime-test the hardened direct-syscall x86 payload; the successful prototype used a different helper and does not qualify it.
+- [x] Runtime-test the hardened direct-syscall x86 payload and the final Unified x86 APK; normal speed and lifecycle recovery passed by user report.
 - [ ] Runtime-test the `armeabi` payload on a suitable device/emulator or label it unqualified and unsupported.
 - [ ] Repeat at least one full online match in both hosting directions after the final combined patch pipeline is frozen.
 - [ ] Verify Android 14 installation using the documented low-target-SDK bypass.
@@ -70,8 +72,8 @@ Purpose: verify the final monotonic implementation rather than relying on the ea
 
 Exit criteria:
 
-- [ ] The final hardened artifact passes the measured slow-motion acceptance test on a previously affected environment.
-- [ ] Background, lock, wrap, and load tests produce no crash, freeze, large physics jump, timer discontinuity, or audio drift.
+- [x] The final Unified x86 artifact has qualitative normal-speed confirmation and a synchronized emulator-to-real-device multiplayer pass: three consecutive games with the Galaxy S4, by user report.
+- [ ] Lifecycle, wrap, and load coverage is complete for supported runtimes, with no in-scope physics jump, timer discontinuity, or audio drift; x86 background and sleep recovery already passed. Excluded graphics/host-crash issues do not count as crash-free evidence.
 - [ ] Every advertised ABI has runtime evidence; untested ABIs are excluded from release claims.
 
 ## Phase 3 — Automated builder and binary verification

@@ -1,6 +1,6 @@
-# Manual physical-device validation
+# Manual runtime validation
 
-These steps require manual execution on a physical device. Record the exact generated manifest because the endpoint and per-user signing identity make each installable APK environment-specific.
+These steps require manual execution on an emulator or physical device. Record the exact generated manifest because the endpoint and per-user signing identity make each installable APK environment-specific. Exact-duration tests are waived by user decision: qualitative normal pace plus emulator-to-real-device LAN synchronization is the speed acceptance gate.
 
 ## Test artifacts
 
@@ -34,14 +34,12 @@ Before each run, record:
 
 Keep the display refresh rate and power settings unchanged between baseline and candidate measurements.
 
-## Baseline measurement
+## Baseline observation
 
 1. Install the baseline APK if it is not already installed.
 2. Fully stop and reopen the app.
-3. Start a mode with a visible fixed-duration countdown, preferably a 60-second round.
-4. Measure real elapsed time from the first visible `60` to the round ending at `0`. Recording the screen and checking timestamps afterward is more precise than a handheld stopwatch.
-5. Repeat twice.
-6. Note whether fruit movement, menu animation, particles, and sound appear uniformly slowed or merely stuttery.
+3. Observe whether fruit movement, menu animation, particles, and sound appear uniformly slowed or merely stuttery.
+4. Exact countdown-duration measurements are not required.
 
 A simulation-clock defect should make the in-game countdown and motion advance more slowly than real time. GPU jank alone should drop frames without proportionally extending the game timer.
 
@@ -64,18 +62,20 @@ If the device has the original application or a build signed by another key, pre
 ## Primary acceptance test
 
 1. Fully stop and reopen the patched app.
-2. Repeat the same fixed-duration round twice under the same device settings.
-3. Compare real elapsed duration against baseline.
+2. Observe game pace under the same device settings as the baseline.
+3. Verify emulator-to-real-device LAN synchronization using the online test below.
 4. Observe fruit trajectories, countdown speed, particles, UI animation, and audio synchronization.
 
 Primary pass criteria:
 
-- A nominal 60-second round lasts 57–63 real seconds.
+- A full LAN match between the final Unified x86 emulator build and a real device stays synchronized.
 - Fruit and UI motion no longer appear uniformly slow.
 - Audio remains synchronized.
-- No new crash, freeze, or severe stutter occurs.
+- No new in-scope crash, freeze, or severe stutter occurs.
 
-Strong confirmation of the diagnosis is a baseline duration materially over 63 seconds followed by a patched duration within 57–63 seconds.
+The user has confirmed normal x86 pace with very strong confidence. Background/resume and sleep/wake also passed by user report. The final Unified APK subsequently completed three consecutive games between the Android 9 Pixel_3a x86 AVD and Galaxy S4 on Android 4.4.2, with no desynchronization or disconnects reported. This satisfies the final emulator-to-real-device synchronization gate. Exact round and interruption durations were not recorded; do not infer measured timing, both hosting directions, or direct versus relayed transport from these reports.
+
+Known emulator color corruption and crashes are excluded from project scope under the user's Intel-driver assumption. Color corruption also reproduced with the untouched APK, and Genymotion did not resolve the issues. This is not proof of the precise cause of every crash or of crash-free operation.
 
 ## Lifecycle safety tests
 
@@ -102,11 +102,11 @@ Correct elapsed-time simulation should preserve game speed even when rendering m
 
 ## Online test
 
-After offline timing passes:
+After qualitative offline speed confirmation:
 
-1. Install the candidate on both players when practical.
+1. Use the final Unified x86 build on the emulator and a real device as the peer, with the candidate installed on both when practical.
 2. Test each player as host.
-3. Complete at least one full online round.
+3. Complete at least one full LAN round between the emulator and real device.
 4. Confirm both clients' countdowns and fruit motion remain synchronized.
 5. Leave the room connected beyond six minutes, then continue manually.
 
