@@ -397,6 +397,17 @@
     "actual_armv5_armv6_hardware_tests_required": false,
     "legacy_hardware_issue_handling": "User feedback and issue tracker",
     "additional_mobile_data_or_relay_specific_tests": "Only if an observed issue makes them necessary",
+    "interrupted_p2p_session_recovery": "Out of project scope at user direction; connectivity recovery tests dismissed.",
+    "server_side_failure_cleanup_and_matchmaking_stability": "Remain in scope.",
+    "reviewed_wifi_interruption": {
+      "date_utc": "2026-09-09",
+      "host_discovery_succeeded_before_interruption": true,
+      "active_search_recovered": false,
+      "server_restart_or_warning_error_observed_in_failure_window": false,
+      "peerchat_connections_closed_and_remaining_qr_record_expired": true,
+      "fresh_search_recovery_verified": false,
+      "private_evidence_directory": "build/wifi-recovery-20260909T041843Z"
+    },
     "game_ui_control": "User only"
   },
   "mixed_abi_lan_qualification": {

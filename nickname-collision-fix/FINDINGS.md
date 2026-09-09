@@ -243,6 +243,8 @@ Further x86 device testing on this workstation is discontinued at the user's dir
 
 No actual ARMv5/ARMv6 hardware was tested, and the user excludes those tests as a release gate; hardware-specific issues will be addressed through user feedback and the issue tracker. Direct LAN gameplay is now qualified, but direct Internet NAT traversal remains untested. No further mobile-data or relay-specific tests are planned unless an observed issue makes them necessary. The captures contain each capturing client's own registration and S20 forwarded messages, not the S20's direct handshake. No live `PEERComplete` or simultaneous S20 SDK/cache memory snapshot was taken.
 
+Recovery of an interrupted P2P session is outside project scope at the user's direction. Server-side consequences that could impair subsequent matchmaking remain in scope. In the reviewed 2026-09-09 Wi-Fi interruption, host discovery succeeded before the S20 switched Wi-Fi → cellular → Wi-Fi; the active search did not recover. The service did not restart or log a server warning/error in the failure window, both PeerChat sessions closed, the host advertisement was removed, and the remaining QR record expired with no active records left. This is not a recovery pass or a blanket proof of all server failure paths. Private review evidence is retained under `build/wifi-recovery-20260909T041843Z`.
+
 ## Sources and retained evidence
 
 - Local clean APK and its independently mapped native libraries; exact input digest is in `README.md` and the shared patcher allowlist.
