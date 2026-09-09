@@ -301,7 +301,7 @@
       "final_capture_sha256": "5f7936cdbb8eaa5164236ce2b4f22f9b5babe65229b6420577c1a4ec0590df7d",
       "private_evidence_directory": "build/physical-pair-20260909T000211Z"
     },
-    "limitation": "The normal APK's four-match series used armeabi-v7a; the separately recorded legacy-only test build adds four armeabi matches on the same phones, not actual ARMv5/ARMv6 hardware qualification. No direct peer-to-peer gameplay qualification. S4 registration handshakes captured directly; S20 accepted identities observed in forwarded messages, not its direct handshake. No simultaneous live SDK/cache snapshot. Earlier five-match evidence belongs to the historical callback-only build; no further x86 device testing is planned."
+    "limitation": "The normal APK and forced legacy APK each passed four relay matches; the mixed-ABI series adds four direct LAN matches. No actual ARMv5/ARMv6 hardware or direct Internet NAT traversal qualification. S4 registration captured directly; S20 accepted identities observed in forwarded messages, not its direct handshake. No simultaneous live SDK/cache snapshot. Historical five-match evidence belongs to the callback-only build; no further x86 device testing is planned."
   },
   "legacy_armeabi_test_build": {
     "date_utc": "2026-09-09",
@@ -382,6 +382,90 @@
     "capture_kernel_drops": 0,
     "final_capture_sha256": "56c0346f79bb27fda7f27e74936c5b9d6453dd7e021b96ab429e9529cd36504b",
     "private_evidence_directory": "build/legacy-physical-20260909T014550Z"
+  },
+  "legacy_gameplay_user_validation": {
+    "date_utc": "2026-09-09",
+    "abi": "armeabi",
+    "devices": ["Galaxy S4", "Galaxy S20"],
+    "modes_passed": ["Classic", "Zen", "Arcade"],
+    "slowdowns_reported": false,
+    "backgrounding_timing_issues_reported": false,
+    "device_sleep_timing_issues_reported": false,
+    "evidence": "User report, not automated frame-time measurement."
+  },
+  "runtime_test_policy": {
+    "actual_armv5_armv6_hardware_tests_required": false,
+    "legacy_hardware_issue_handling": "User feedback and issue tracker",
+    "additional_mobile_data_or_relay_specific_tests": "Only if an observed issue makes them necessary",
+    "game_ui_control": "User only"
+  },
+  "mixed_abi_lan_qualification": {
+    "date_utc": "2026-09-09",
+    "completed_matches": 4,
+    "completion_evidence": "User reports; all game UI actions user-only.",
+    "devices": {
+      "s20": {
+        "abi": "armeabi-v7a",
+        "apk_sha256": "5dc4a4f96a1efcc3cb7de8597124cb8b62fc747c5c1fe7cc0548e47ac4748eb6",
+        "update_install_preserved_data": true,
+        "package_manager_abi_and_extracted_library_hash_verified": true,
+        "unchanged_game_pid": 24370
+      },
+      "s4": {
+        "abi": "armeabi",
+        "apk_sha256": "2eaba89dac58a9aaa7477fd8781ee82ae9e073fce039963ac06931dc72ddb11f",
+        "legacy_library_hash_verified_unchanged": true,
+        "unchanged_game_pid": 27610
+      }
+    },
+    "transport": "Direct LAN UDP over shared Wi-Fi; matchmaking still uses FruitSpy.",
+    "matches": [
+      {
+        "host": "S20",
+        "host_nickname": "nick221.65",
+        "joiner_nickname": "nick27088.59",
+        "s4_requested_nickname": "nick27088",
+        "s4_433_and_retry_observed": true,
+        "direct_udp_endpoints": ["192.168.100.17:45446", "192.168.100.9:6500"]
+      },
+      {
+        "host": "S20",
+        "host_nickname": "nick221",
+        "joiner_nickname": "nick27088",
+        "s4_requested_nickname": "nick27088",
+        "s4_433_and_retry_observed": false,
+        "preferred_name_restoration_without_restart": true,
+        "direct_udp_endpoints": ["192.168.100.17:48134", "192.168.100.9:47357"]
+      },
+      {
+        "host": "S4",
+        "host_nickname": "nick27088.73",
+        "joiner_nickname": "nick221.44",
+        "s4_requested_nickname": "nick27088",
+        "s4_433_and_retry_observed": true,
+        "direct_udp_endpoints": ["192.168.100.9:58464", "192.168.100.17:6500"]
+      },
+      {
+        "host": "S4",
+        "host_nickname": "nick27088",
+        "joiner_nickname": "nick221",
+        "s4_requested_nickname": "nick27088",
+        "s4_433_and_retry_observed": false,
+        "preferred_name_restoration_without_restart": true,
+        "direct_udp_endpoints": ["192.168.100.9:46027", "192.168.100.17:57782"]
+      }
+    ],
+    "host_launch_and_bidirectional_lan_udp_observed_for_all_matches": true,
+    "server_relay_establishment_or_forwarding_observed": false,
+    "s4_configured_preference_after_host_collision": "nick27088",
+    "diagnostic_recovery": "SSH journal/reservation channels reset after match 1. Finite journal recovered; exact-command-line verified orphan reservation process terminated without service restart. Replacement fixture accepted originals, released with EOF, and passed acceptance/release probes. Not an in-game interruption-recovery test.",
+    "before_each_free_name_reconnect": "Both originals released with EOF and successful availability probes; zero established PeerChat connections.",
+    "cleanup": "Fixture exited; captures/journal saved; diagnostics stopped; remote fixture/capture artifacts removed and absence verified. Service active, zero PeerChat connections. S20 normal APK and S4 legacy-only APK left installed.",
+    "final_capture_packets": 982,
+    "final_capture_registrations": 4,
+    "capture_kernel_drops": 0,
+    "final_capture_sha256": "83f3b7ef24529242d817d3647453efc662d8c18319bff8e73398394d13b576ff",
+    "private_evidence_directory": "build/mixed-abi-20260909T034701Z"
   },
   "historical_callback_only_build": {
     "signed_apk_sha256": "917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1",
