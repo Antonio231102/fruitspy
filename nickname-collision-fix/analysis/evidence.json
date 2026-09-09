@@ -540,6 +540,60 @@
     "cleanup": "Diagnostics stopped; remote fixture/capture artifacts removed and absence verified. Service active, zero established PeerChat/browser connections. Installed APKs unchanged.",
     "private_evidence_directory": "build/max-nickname-20260909T042602Z"
   },
+  "intentional_suffix_nickname_qualification": {
+    "date_utc": "2026-09-09",
+    "controlled_completed_matches": 3,
+    "completion_evidence": "User reports; game UI user-only.",
+    "host": {"device": "S4", "abi": "armeabi"},
+    "joiner": {"device": "S20", "abi": "armeabi-v7a"},
+    "configured_names": {"s4": "0123456789abc.25", "s20": "fedcba9876543.19"},
+    "configured_name_length": 16,
+    "unchanged_game_pids_before_cold_restart": {"s4": 27610, "s20": 24370},
+    "game_pids_after_cold_restart": {"s4": 11973, "s20": 1083},
+    "configured_names_unchanged_between_matches": true,
+    "collision": {
+      "s4_requested": "0123456789abc.25",
+      "s4_433_and_retry_observed": true,
+      "s4_accepted": "0123456789abc.25.62",
+      "s20_forwarded_identity": "fedcba9876543.19.68",
+      "accepted_name_lengths": [19, 19],
+      "intentional_suffixes_preserved": true,
+      "s4_host_launch_observed": true,
+      "direct_udp_endpoints": ["192.168.100.9:41647", "192.168.100.17:41190"]
+    },
+    "reconnect": {
+      "s4_requested": "0123456789abc.25",
+      "s4_nickname_commands": 1,
+      "s4_433_or_retry_observed": false,
+      "s4_accepted": "0123456789abc.25",
+      "s20_forwarded_identity": "fedcba9876543.19",
+      "only_temporary_suffixes_removed": true,
+      "game_processes_unchanged": true,
+      "s4_host_launch_observed": true,
+      "direct_udp_endpoints": ["192.168.100.9:37666", "192.168.100.17:41947"]
+    },
+    "cold_restart": {
+      "s4_requested": "0123456789abc.25",
+      "s4_nickname_commands": 1,
+      "s4_433_or_retry_observed": false,
+      "s4_accepted": "0123456789abc.25",
+      "s20_forwarded_identity": "fedcba9876543.19",
+      "both_game_processes_changed": true,
+      "s4_host_launch_observed": true,
+      "direct_udp_endpoints": ["192.168.100.9:34586", "192.168.100.17:6500"]
+    },
+    "s4_configured_storage": "Exact intentional-suffix original followed by NUL after collision, no-restart reconnect and cold restart.",
+    "fixture_release": "Both originals released with server EOF and accepted/released by availability probes; zero PeerChat connections before reconnect and cold-launch match.",
+    "transport": "Direct LAN UDP in all three matches.",
+    "capture_boundary": "S4 registration captured directly; S20 accepted identities in forwarded messages and user reports, not direct handshake or preference-memory inspection.",
+    "cold_start_preference_persistence_tested": true,
+    "final_capture_packets": 600,
+    "complete_captured_registrations": 3,
+    "capture_kernel_drops": 0,
+    "final_capture_sha256": "e272d7276f7884310192b2c95495b7c1201f759674ba2013609f4839f08c6f11",
+    "cleanup": "Diagnostics stopped; remote fixture/capture artifacts removed and absence verified. Service active, zero established PeerChat/browser connections. Installed APKs unchanged.",
+    "private_evidence_directory": "build/intentional-suffix-20260909T044547Z"
+  },
   "historical_callback_only_build": {
     "signed_apk_sha256": "917c079ed8e8e01b4f481f96ade73e23fb2afe5a5eab098fac819da6962d21c1",
     "device_validation": {
