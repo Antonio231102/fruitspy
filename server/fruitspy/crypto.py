@@ -1,3 +1,24 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+#
+# Python adaptations of Luigi Auriemma's GameSpy cryptography, obtained through
+# devzspy/GameSpy-Openspy-Core, revision 15ba5afe346447f95c1b097a45826b018cfe4a76:
+# gsseckey: common/gsmsalg.cpp, Copyright 2004,2005,2006,2007,2008 Luigi Auriemma.
+# PeerChatCipher: common/gs_peerchat.cpp/.h, Copyright 2004,2005,2006 Luigi Auriemma.
+# EnctypeX: common/enctypex_decoder.cpp, Copyright 2008,2009 Luigi Auriemma.
+# Original author/source: https://aluigi.altervista.org/
+#
+# Modified 2026-09-02: Python adaptations, byte/state handling, input validation,
+# and supported-protocol scope. Attribution/license notices added 2026-09-10.
+# These are modified implementations, not unmodified upstream files.
+#
+# This program is free software; you can redistribute it and/or modify it under
+# the terms of the GNU General Public License as published by the Free Software
+# Foundation; either version 2 of the License, or (at your option) any later version.
+# This program is distributed WITHOUT ANY WARRANTY; without even the implied
+# warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE for the full terms and NOTICE for source mapping and attribution.
+# If you did not receive the license, see https://www.gnu.org/licenses/.
+#
 from __future__ import annotations
 
 

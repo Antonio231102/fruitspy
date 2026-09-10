@@ -2,6 +2,8 @@
 
 FruitSpy is a standalone GameSpy-compatible multiplayer service for Fruit Ninja 1.7.6, replacing the retired GameSpy infrastructure. It supports two-player LAN play and Internet matchmaking with direct-first UDP negotiation and bounded automatic relay fallback. Direct LAN gameplay and relayed Internet gameplay have been exercised; direct Internet traversal remains unqualified, and mixed local/remote home-router topologies need explicit validation.
 
+**FruitSpy is an independent project and is not affiliated with, sponsored by, or endorsed by Halfbrick Studios.** All trademarks used or mentioned in this project, including **Fruit Ninja** and **GameSpy**, are the property of their respective owners.
+
 ## Repository layout
 
 - `server/` — standalone GameSpy-compatible services, deployment configuration, and protocol tests.
@@ -246,7 +248,12 @@ Fruit Ninja's linked GameSpy SDK contains an unused `CDKEY` command path, but th
 
 ## Patch a locally owned APK
 
-The repository does not distribute Fruit Ninja or a prebuilt APK. The patcher accepts only the clean Fruit Ninja 1.7.6 APK with SHA-256 `5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650`. For `armeabi`, `armeabi-v7a`, and `x86`, it applies the **slow-motion fix → matchmaking fix → custom server patch**, in that order. The matchmaking fix keeps the game's session identity synchronized after nickname collisions and restores the configured nickname for each new connection; it does not fix server-side dead sessions. The patcher then removes the obsolete APK signature, aligns the result, and signs it.
+The repository does not distribute Fruit Ninja or a prebuilt APK. The patcher accepts only the clean Fruit Ninja 1.7.6 APK with SHA-256 `5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650`. For `armeabi`, `armeabi-v7a`, and `x86`, it applies the **slow-motion fix → matchmaking fix → custom server patch**, in that order. The patcher then removes the obsolete APK signature, aligns the result, and signs it.
+
+Both compatibility fixes are included automatically:
+
+- **[Slow-motion fix](slow-motion-fix/README.md):** replaces CPU-time-based frame timing with monotonic elapsed time, restoring normal gameplay speed on affected devices. It also guards against large frame-time jumps after pauses.
+- **[Nickname-collision fix](nickname-collision-fix/README.md):** prevents hosting and matchmaking failures when a nickname is already in use by keeping the game's session identity synchronized with the accepted, temporarily renamed nickname. Each new connection requests the configured nickname again without changing the saved setting. This does not fix server-side dead sessions.
 
 Run APK commands from the **repository root**, not `server/` (use `cd ..` first if you followed the server commands in this terminal). Complete the [signing-tool installation](#2-install-signing-tools-on-the-apk-patching-computer) for the default signed output. For the guided workflow:
 
@@ -350,10 +357,18 @@ It is intentionally excluded from test discovery because its wall-clock duration
 
 LAN support remains the compatibility baseline. The guarded direct-first service is deployed on a public IPv4 VPS with automatic relay fallback after three seconds. A controlled Wi-Fi/cellular pair that previously had a one-way direct path completed two consecutive relayed games and a reverse-host game. A LAN game under the same `auto` policy remained direct and allocated no relay. Evidence, configuration, and failure classification are in [DEPLOYMENT.md](DEPLOYMENT.md); further hardening remains tracked in [ROADMAP.md](ROADMAP.md).
 
+## License and third-party attribution
+
+FruitSpy's project-authored material is licensed under the **GNU General Public License, version 2 or (at your option) any later version** (`GPL-2.0-or-later`). See [LICENSE](LICENSE) for the full terms and [NOTICE](NOTICE) for trademark ownership, upstream copyright, modification, and third-party provenance notices.
+
+The server's cryptography derives from **Luigi Auriemma's GameSpy implementations**, obtained through **devzspy/GameSpy-Openspy-Core**, and retains their GPL-2.0-or-later terms. OpenSpy also informed the server implementation; **GameSpyDocs** and **UniSpySDK** were protocol/interface research references, while **Unicorn** is a separately installed optional validation tool. These roles are distinct: the project does not claim that every referenced repository is GPL-licensed or that it owns the upstream work.
+
+The license does not grant rights in Fruit Ninja APKs, proprietary SDK/game code, assets, or trademarks. A patched APK still contains proprietary game material; licensing the patcher does not authorize redistribution of that game. Remaining permission questions for any copied, otherwise-unlicensed upstream material are documented in [NOTICE](NOTICE) and remain part of release review.
+
 ## Release status
 
 Pre-release preservation project. The source and complete reachable-history publication audit is complete: it covered all 47 then-reachable commits, 361 blobs, and the 12 pending tracked files, with zero confirmed credentials or proprietary game binaries. The small authored native payloads are intentional repository content. Proprietary APKs, generated APK signatures, packet captures, UI dumps, and private signing keys remain excluded.
 
 The two retired generated APK reports were removed from the published branch history; a fresh clone contains neither file nor their historical blobs. The owner accepts GitHub's retention of the old, non-sensitive reports. No further hosting-side purge or repository migration is planned, and this is not a release blocker.
 
-This technical audit is **not public-release or legal approval**. Choosing a project license, resolving redistribution/provenance questions, and deciding which author/deployment metadata may be public remain explicit owner decisions before changing repository visibility. Local history cleanup does not erase existing clones or hosting-provider caches.
+This technical audit is **not public-release or legal approval**. GPL-2.0-or-later has been selected and the copyright/provenance notices are included; remaining upstream permission, legal/trademark, and author/deployment-metadata decisions still require resolution before changing repository visibility. Local history cleanup does not erase existing clones or hosting-provider caches.

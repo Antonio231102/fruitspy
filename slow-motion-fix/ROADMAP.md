@@ -108,8 +108,8 @@ Purpose: publish only maintainable compatibility source and reproducible evidenc
 - [x] Update the compatibility status documents with the recorded owner acceptance and runtime boundaries. Keep dated test hashes and observations as historical evidence, not current output defaults.
 - [x] Distinguish the earlier prototype, hardened timing candidate, and later integrated-patcher evidence.
 - [x] Record the supplied device/ABI, refresh-rate, APK-hash, and qualitative results in `VALIDATION.md` and the nickname-fix evidence. Exact-duration measurements were waived; missing measurements remain explicitly unrecorded.
-- [ ] Review the minimal static offsets, protocol references, and authored payloads for source provenance and applicable notices. Historical local symbol dumps and build manifests are not required checkout artifacts.
-- [ ] Choose and add a source license with owner approval.
+- [ ] Resolve remaining provenance/permission questions for minimal static offsets, protocol references, and any reused expression. Copyright and third-party notices are recorded in the root NOTICE; recording attribution does not supply missing permission. Historical local symbol dumps and build manifests are not required checkout artifacts.
+- [x] Adopt the owner-approved GPL-2.0-or-later source license with upstream copyright notices, trademark ownership attribution, and a clear Halfbrick Studios non-affiliation statement. See the root LICENSE and NOTICE.
 - [ ] Add a security policy, disclosure contact, contribution guidance, supported-version statement, and compatibility limitations.
 - [x] Complete full reachable Git-history credential/proprietary-artifact scanning over 47 commits, 361 historical blobs, and 12 pending tracked files at the audit checkpoint. No confirmed credentials or proprietary game binaries were found; the small authored native payloads are intentional. The pre-rewrite audit evidence is local and ignored at `../build/publication-audit-20260910T020432Z/publication-report.json`, not a published checkout artifact.
 - [x] Confirm that audited reachable history and pending tracked files contain no game APK, extracted game library, private signing material, capture, or game-asset dump. This does not certify ignored local files or a future release package.
@@ -125,8 +125,8 @@ Exit criteria:
 - [ ] A third party can reproduce the documented unsigned output from public source and a lawful allowlisted APK.
 - [x] Runtime claims match the recorded device/ABI matrix without implying universal modern-Android support.
 - [x] Complete the bounded credential/proprietary-artifact audit; retain its limitations.
-- [ ] Accept license/provenance, legal/trademark, and owner privacy decisions before publication. The scoped dependency review's build-backend follow-up is non-blocking source-release hygiene; see the root roadmap before publishing packages.
-- [ ] The owner approves the license, release contents, checksums, and repository visibility change.
+- [ ] Resolve remaining upstream permission, legal/trademark, and owner privacy decisions before publication. The project license is selected, not final release approval. The scoped dependency review's build-backend follow-up is non-blocking source-release hygiene; see the root roadmap before publishing packages.
+- [ ] The owner approves the remaining release review, release contents, checksums, and repository visibility change.
 
 ## Deferred scope
 

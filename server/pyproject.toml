@@ -8,6 +8,8 @@ version = "0.1.0"
 description = "Standalone GameSpy-compatible server for Fruit Ninja 1.7.6"
 requires-python = ">=3.11"
 dependencies = []
+license = "GPL-2.0-or-later"
+license-files = ["LICENSE", "NOTICE"]
 
 [project.scripts]
 fruitspy-server = "fruitspy.__main__:main"

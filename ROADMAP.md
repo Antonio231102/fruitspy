@@ -182,7 +182,7 @@ Purpose: publish a reproducible preservation project without redistributing prop
 
 - [x] Remove `server/apk-patch-map.json` and `server/apk-patch-report.json` from the pushed reachable history. Rewritten main `cc17743` has 46 commits rather than the audited 47 because one report-only commit was pruned; both paths and their three historical blobs are absent from rewritten local history and a fresh remote clone. All unrelated tree content was preserved. These retired generated reports are not repository inputs or supported reference artifacts; use the patcher's explicit `--report PATH` option for a new operator-local diagnostic report.
 - [x] Accept GitHub's retention of the old, non-sensitive generated reports. The owner chose to keep the existing repository as it is; no further hosting-side purge or repository migration is planned. This is not a release blocker and does not imply that retained objects or existing clones were erased.
-- [ ] Choose and add a project license; do not assume a license without owner approval.
+- [x] Adopt the owner-approved GPL-2.0-or-later license. Include the canonical GPL text, upstream copyright and modification notices, trademark ownership and third-party provenance statements, and the Halfbrick Studios non-affiliation statement in LICENSE, NOTICE, README, and the Python distribution.
 - [ ] Publish source, tests, protocol notes, and deterministic patch tooling only.
 - [ ] Never publish Fruit Ninja APKs, extracted native libraries, signing keystores, signing passwords, packet captures, or copyrighted game assets.
 - [ ] Add a security policy, responsible-disclosure contact, contribution guidelines, and a supported-version/topology statement.
@@ -190,7 +190,7 @@ Purpose: publish a reproducible preservation project without redistributing prop
 - [x] Complete the full reachable Git-history credential/proprietary-artifact audit: 47 commits, 361 historical blobs, and 12 pending tracked files were covered at the audit checkpoint. Gitleaks and supplementary inspection found zero confirmed credential leaks or proprietary game binaries; the small native payloads are intentionally authored project code. This is a bounded audit result, not legal or publication approval. The pre-rewrite local evidence is retained under ignored `build/publication-audit-20260910T020432Z/publication-report.json`, not distributed as a repository artifact.
 - [x] Review declared direct dependencies and applicable advisories. The server has no third-party runtime dependencies; the audit identified non-blocking setuptools build-backend baseline work and the optional Unicorn validation engine's license/provenance boundary. This was not an inventory of every installed external tool or transitive component.
 - [ ] Select and qualify a maintained build-backend baseline and review packaged distribution contents before publishing packages.
-- [ ] Resolve source provenance, required third-party notices, and owner approval for publishing author/committer attribution and operational/test metadata. Removing the two generated reports does not decide whether the remaining historical attribution and test metadata should be public.
+- [ ] Resolve remaining third-party permissions and owner approval for publishing author/committer attribution and operational/test metadata. NOTICE identifies the GPL-covered Auriemma cryptography and distinguishes OpenSpy handler permission gaps, research-only GameSpyDocs/UniSpySDK references, and optional Unicorn validation. Attribution and selecting GPL do not supply missing upstream grants; actual copied material without a grant needs permission or an independent replacement.
 - [ ] Correct all status documents and manifests to match the release candidate.
 - [ ] Commit and push the final reviewed release contents after approval, tag the accepted checkpoint, and publish versioned alpha checksums and migration notes. The reachable-history cleanup has already been pushed.
 - [ ] Complete legal and trademark review before changing repository visibility.
@@ -199,9 +199,9 @@ Exit criteria:
 
 - [x] A clean checkout reproduces the patch from a user-supplied lawful APK without using a project-owned signing key. Verified on Windows at pre-rewrite commit `44be857`: isolated Python (`-I -S`), fresh local key generation/reuse, signed IPv4 and DNS builds across all three ABIs, identical signed output on repeat, and unsigned output with an empty tool `PATH`. Eight repository-only tests passed; the real-APK test skipped because the supplied APK was deliberately outside the checkout, and four actual CLI builds covered it separately. Temporary APKs and signing material were removed. Details: `nickname-collision-fix/analysis/evidence.json`.
 - [x] Complete credential/proprietary-artifact scanning and the scoped direct-dependency review; retain their limitations and findings.
-- [ ] Accept the license/provenance, legal/trademark, and owner privacy decisions before publication. Build-backend baseline follow-up remains non-blocking source-release hygiene and should be completed before publishing packages.
+- [ ] Resolve the remaining upstream permission, legal/trademark, and owner privacy decisions before publication. The project license is selected; this does not constitute final release approval. Build-backend baseline follow-up remains non-blocking source-release hygiene and should be completed before publishing packages.
 - [ ] Automated tests plus LAN, same-egress, and independent-network smoke matrices pass against the exact release candidate.
-- [ ] Repository visibility changes only after the owner approves the license and release review.
+- [ ] Repository visibility changes only after the owner approves the remaining release review.
 
 ## Deferred capabilities
 

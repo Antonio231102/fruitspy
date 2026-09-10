@@ -1,0 +1,190 @@
+FruitSpy — licensing, third-party copyright, and trademarks
+=====================================================================
+
+License and trademark ownership
+-------------------------------
+All trademarks used or mentioned in this project, including "Fruit Ninja"
+and "GameSpy", are the property of their respective owners.
+Upstream copyright notices are retained below; FruitSpy does not claim
+exclusive authorship or ownership of the third-party work it adapts.
+
+SPDX-License-Identifier: GPL-2.0-or-later
+
+FruitSpy's project-authored source, documentation, tests, build scripts, and
+native patch payloads are offered under the GNU General Public License as
+published by the Free Software Foundation, either version 2 of the License,
+or (at your option) any later version. The inherited GPL-covered cryptography
+retains its original copyright and license notices. The full, unmodified
+GPL version 2 text is in LICENSE.
+
+FruitSpy is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE. See the GNU General Public License for details.
+
+This grant covers only rights held by the project's contributors or granted
+by the relevant upstream copyright holders. It does not relicense proprietary
+third-party material or supply missing upstream permission. This NOTICE
+records attribution and scope; it adds no restrictions to the GPL.
+
+Project: https://github.com/Antonio231102/fruitspy
+
+1. Derived cryptography: Luigi Auriemma, through GameSpy-Openspy-Core
+------------------------------------------------------------------
+FruitSpy's server/fruitspy/crypto.py is a Python adaptation of Luigi Auriemma's
+GameSpy cryptography implementations as included in:
+
+  devzspy/GameSpy-Openspy-Core
+  https://github.com/devzspy/GameSpy-Openspy-Core
+  Reviewed source revision: 15ba5afe346447f95c1b097a45826b018cfe4a76
+  https://github.com/devzspy/GameSpy-Openspy-Core/tree/15ba5afe346447f95c1b097a45826b018cfe4a76
+
+The specific source-to-adaptation mapping is:
+
+  common/gsmsalg.cpp — GSMSALG 0.3.3
+  Copyright 2004,2005,2006,2007,2008 Luigi Auriemma
+  FruitSpy adaptation: gsseckey(), QR challenge-response generation.
+
+  common/gs_peerchat.cpp and common/gs_peerchat.h
+  GS peerchat encryption/decryption algorithm 0.2
+  Copyright 2004,2005,2006 Luigi Auriemma
+  FruitSpy adaptation: PeerChatCipher, including the fixed-six-byte game-key
+  behavior in the OpenSpy variant.
+
+  common/enctypex_decoder.cpp — GS enctypeX servers list decoder/encoder 0.1.3a
+  Copyright 2008,2009 Luigi Auriemma
+  FruitSpy adaptation: EnctypeX initialization, encryption, and decryption.
+
+Author's primary project/source site: https://aluigi.altervista.org/
+Each of these upstream implementations explicitly grants GPL version 2 or,
+at the recipient's option, any later version. This is not an MIT or BSD grant.
+Their applicable notice is:
+
+  This program is free software; you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation; either version 2 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program; if not, see https://www.gnu.org/licenses/.
+
+FruitSpy modifications by Antonio231102: Python adaptation, Python byte/state
+handling, input validation, and supported-protocol scope. The local adaptations
+were introduced on 2026-09-02; attribution and licensing notices were added on
+2026-09-10. These are modified implementations, not unmodified upstream files.
+
+2. OpenSpy server implementation: reference and permission boundary
+-----------------------------------------------------------------
+FruitSpy also used GameSpy-Openspy-Core's QR, PeerChat, Server Browsing, and
+NatNeg implementation as a source/reference for protocol behavior and server
+implementation. Referenced upstream files include qr/Client.cpp,
+peerchat/client.cpp, serverbrowsing/Client.cpp, natneg/Client.cpp, and their
+protocol definitions. Copyright in OpenSpy-authored contributions remains
+with their respective authors; no ownership is transferred to FruitSpy.
+
+At the reviewed revision above, no repository-wide license grant or individual
+license grant was found for those protocol handlers. The explicit GPL notices
+on Auriemma's cryptography do NOT establish a license for all OpenSpy code.
+
+Permission review remains open for any protectable OpenSpy-authored expression
+carried into FruitSpy. Protocol constants, wire formats, and independently
+implemented behavior must be distinguished from copied implementation.
+Actual copied material without an applicable grant requires permission from
+its copyright holders or a defensible independent replacement before release.
+Attribution, public GitHub availability, and selecting GPL do not cure a
+missing grant. No blanket OpenSpy redistribution permission is claimed here.
+
+3. GameSpyDocs: protocol research reference
+-----------------------------------------
+Project: GameProgressive/GameSpyDocs
+https://github.com/GameProgressive/GameSpyDocs
+Reviewed revision: dc5557331c74e8f039b7f51f0a255b972f6c224a
+Paper: "Research On GameSpy Protocol", credited to Arves100 and xiaojiuwo.
+Copyright in the paper and other upstream materials remains with their
+respective authors/rightsholders.
+
+FruitSpy cites this project for protocol research and interprets those facts
+alongside local APK analysis and runtime observations. It is not a runtime
+dependency. No reuse license was found for the research repository at the
+reviewed revision. Citation of facts does not license copying its prose,
+diagrams, or code excerpts. Such copying would need separate clearance.
+
+4. UniSpySDK: SDK interface reference, not a BSD-licensed bundled SDK
+------------------------------------------------------------------
+Project: GameProgressive/UniSpySDK
+https://github.com/GameProgressive/UniSpySDK
+Reviewed revision: bbac5fffce5ef5fb2a1ed9f4721911a04e30d989
+License: https://github.com/GameProgressive/UniSpySDK/blob/bbac5fffce5ef5fb2a1ed9f4721911a04e30d989/LICENSE
+
+FruitSpy consulted Peer/peer.h and gt2/gt2.h to interpret SDK interfaces and
+calls to functions already present in a user-supplied APK. The authored patch
+payloads are not copies of the full SDK, and the SDK is not bundled here.
+
+The upstream root LICENSE describes the original SDK code as proprietary
+Electronic Arts code, states permission for non-commercial use, and directs
+commercial users to EA. Only GameProgressive's modifications are offered under
+BSD-3-Clause-style terms: Copyright (c) 2017-2023, GameProgressive Team.
+Peer/peer.h bears an IGN Entertainment copyright and explicit restrictions;
+gt2/gt2.h bears a 2012 GameSpy Technology/IGN copyright and restrictions.
+The entire SDK must not be described as BSD-licensed or relicensed as GPL.
+This notice does not independently verify the scope of the stated EA grant.
+
+No copied SDK implementation was identified in the reviewed FruitSpy patcher
+and payloads. Any actual SDK copying remains subject to the relevant owners'
+permissions. Interface references and independently reconstructed calls do
+not grant rights to distribute the original SDK or Fruit Ninja libraries.
+
+5. Unicorn: separately installed optional validation dependency
+--------------------------------------------------------------
+Project: unicorn-engine/unicorn, version 2.1.4
+https://github.com/unicorn-engine/unicorn/tree/2.1.4
+Copyright remains with the Unicorn authors and its component rightsholders.
+License: https://github.com/unicorn-engine/unicorn/blob/2.1.4/COPYING
+The engine identifies its license as GPLv2; additional components may have
+their own terms. This is not a blanket BSD license for the engine.
+
+Only the optional native execution harness uses Unicorn. It is not bundled
+with FruitSpy, required by the server, or needed for ordinary APK patching.
+Running it does not by itself determine the license of independently authored
+input or output. Redistributing Unicorn or a combined work requires compliance
+with its applicable licenses and corresponding-source obligations.
+
+6. Proprietary game material and no affiliation or endorsement
+------------------------------------------------------------
+FruitSpy is an independent preservation and interoperability project.
+
+FRUITSPY IS NOT AFFILIATED WITH, SPONSORED BY, OR ENDORSED BY HALFBRICK STUDIOS.
+
+Fruit Ninja, GameSpy, and Halfbrick names, logos, and trademarks, along with
+proprietary game code and assets, remain the property of their respective
+owners. Mentioning OpenSpy, GameProgressive, IGN, Electronic Arts, Unicorn,
+or other third parties also does not imply their sponsorship or endorsement.
+
+FruitSpy does not distribute Fruit Ninja APKs, extracted proprietary game
+libraries, or game assets. Users supply their own lawfully obtained supported
+APK. The project license does not grant rights in that proprietary material,
+any trademarks, or proprietary portions of a generated patched APK. Injected
+FruitSpy payloads retain their own license; running the patcher does not turn
+the rest of the game into GPL-covered project code or authorize redistribution
+of the combined APK. This statement does not add a non-commercial restriction
+to FruitSpy's GPL license.
+
+7. Distribution and maintenance
+------------------------------
+Preserve applicable copyright, license, modification, and no-warranty notices.
+Include LICENSE and this NOTICE with source and packaged releases. Distributors
+of covered object code must satisfy the GPL's corresponding-source requirements;
+this attribution file is not a substitute for providing that source.
+
+The repository-root LICENSE and NOTICE are authoritative. Matching copies in
+server/ are included because server/ is the Python distribution build root;
+keep those copies synchronized when updating legal text. Source paths in this
+NOTICE refer to the full FruitSpy repository, not an installed package layout.
+
+The chosen GPL license and recorded attribution do not constitute legal,
+trademark, privacy, or final public-release approval. The unresolved upstream
+permission boundaries above remain tracked in ROADMAP.md.
