@@ -1,5 +1,9 @@
 # Runtime validation record
 
+## Current acceptance — 2026-09-09
+
+**Fully functional, with high confidence**, accepted by the project owner based on the recorded runtime and native evidence. The integrated main patcher also passed nine tests and 66 native nickname scenarios and produced a signed APK byte-identical to the qualified build. Further long-session timing/stability investigation and potential changes will be initiated in response to user reports, not as additional release gates. This acceptance preserves the scope and limitations of each observation below.
+
 ## 2026-09-04 cross-version LAN/VPS test
 
 Artifact: `Fruit Ninja 1.7.6 - FruitSpy VPS - Clock Fix.apk`
@@ -99,15 +103,13 @@ The harness mapped the actual APK libraries, initialized the timer's active flag
 
 This qualifies the wrap arithmetic and guard boundaries without waiting 72 minutes. The low-word boundary follows the system monotonic clock, not time since app launch; a short session can cross it. This does not qualify syscall-failure handling, first-call static initialization, actual game rendering/update behavior, or long-session resource stability. No Android emulator or phone UI was used. Full per-frame results, library hashes, addresses and negative controls are retained privately in `nickname-collision-fix/build/clock-boundaries-20260909T051152Z/results.json`.
 
-## Remaining runtime coverage
+## Coverage boundaries and report-driven follow-up
 
-The hardened candidate still requires:
+The accepted patch does not require additional endurance testing before release:
 
-- Both hosting directions for the final Unified build; three consecutive x86-to-S4 games already passed, but host roles across those games were not reported
-- Runtime qualification of the legacy `armeabi` payload
-- Broader lifecycle coverage beyond the tested runtimes; x86, physical `armeabi`, and S20 `armeabi-v7a` background/resume and sleep/wake behavior passed by user report. A separate new-round-after-each-interruption result is not recorded.
-- Optional long-session stability coverage; accelerated execution now qualifies native low-word wrap arithmetic and guard boundaries in all three ABI libraries, without a 72-minute wait.
-- Broader display/load coverage where available; S20 120 Hz game speed now passed by user report, but severe-load guard behavior is not separately qualified.
-- Broader repeated-match coverage beyond the three-game x86-to-S4 pass before making a general reliability claim
+- Physical `armeabi` and `armeabi-v7a` execution, both hosting directions, mixed-ABI gameplay, and repeated matches are recorded in `../nickname-collision-fix/FINDINGS.md`; those combined builds include the clock correction. The integrated builder reproduced the same signed APK byte-for-byte.
+- Background/resume and sleep/wake passed by user report on x86, physical `armeabi`, and S20 `armeabi-v7a`. S20 120 Hz game speed also passed. A separate new-round-after-each-interruption result and severe-load device behavior are not independently recorded.
+- Low-word wrap and guard boundaries passed accelerated native execution in all three ABI libraries. Additional long-session timing or stability investigations are deferred until user reports warrant them; no 72-minute physical session is required for acceptance.
+- Actual ARMv5/ARMv6 hardware and syscall-failure handling remain unqualified. The unchecked `clock_gettime` error path remains a documented hardening opportunity, not an observed device failure or an implemented fix.
 
-The earlier prototype's wall-clock-adjustment risk is structurally removed by `CLOCK_MONOTONIC`; it is no longer a required clock-change test. Runtime testing remains necessary to qualify the injected syscall and guard paths across every advertised ABI and lifecycle boundary.
+The earlier prototype's wall-clock-adjustment risk is structurally removed by `CLOCK_MONOTONIC`; changing civil time is not a required test. High-confidence functional acceptance does not imply exhaustive testing of every device, error path or session duration.

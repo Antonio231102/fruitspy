@@ -15,7 +15,7 @@ You need:
 - FruitSpy source code
 - Two devices on independent networks for acceptance testing
 
-The DNS name patched into the APK must be fewer than 20 ASCII characters. FruitSpy currently requires IPv4; an IPv6-only VPS is not supported.
+The DNS name patched into the APK must be at most 18 ASCII characters. FruitSpy currently requires IPv4; an IPv6-only VPS is not supported.
 
 A low-end general-purpose instance should be adequate for a controlled FruitSpy deployment. The latest production-limit campaign peaked at **42,112 KiB (about 41.1 MiB) of RAM** while exercising every configured capacity boundary. Keep the checked-in **256 MiB process memory limit** and use **at least 512 MiB of total VPS RAM** as a conservative starting point so the operating system retains headroom. The test measurement includes its synthetic clients, and its capacity scenarios ran separately rather than all at once; it is not a guaranteed worst-case maximum. CPU throughput and sustained relay bandwidth remain separate sizing limits.
 
@@ -28,7 +28,7 @@ Update the operating system and install Python tooling:
 ```text
 sudo apt update
 sudo apt upgrade
-sudo apt install python3 python3-venv
+sudo apt install python3 python3-venv git ufw
 python3 --version
 ```
 
@@ -46,7 +46,7 @@ fn.example.net -> 203.0.113.20
 
 Requirements:
 
-- The complete hostname must be fewer than 20 ASCII characters.
+- The complete hostname must be at most 18 ASCII characters.
 - It must resolve directly to the VPS IPv4 address.
 - Do not enable an HTTP/CDN proxy for the record.
 - Patch every test APK with this exact hostname.
@@ -80,7 +80,7 @@ sudo python3 -m venv /opt/fruitspy/venv
 sudo /opt/fruitspy/venv/bin/python -m pip install /opt/fruitspy/server
 ```
 
-FruitSpy has no runtime packages outside the Python standard library. Installing it creates the `fruitspy-server` and `fruitspy-healthcheck` commands inside the virtual environment.
+FruitSpy has no runtime packages outside the Python standard library and requires Python 3.11 or newer. Package installation uses the declared `setuptools>=77` build backend, which pip normally downloads in an isolated build environment; source-checkout execution does not need that packaging step. Installing the package creates the `fruitspy-server` and `fruitspy-healthcheck` commands inside the virtual environment. JDK and Android SDK tools are needed only on the computer that patches APKs.
 
 ## 4. Create the server configuration
 
@@ -293,7 +293,9 @@ python patcher/patch_apk.py original.apk patched.apk \
   --non-interactive
 ```
 
-Use the exact hostname in `/etc/fruitspy/config.json`. The patcher applies both client transformations to all three ABIs, creates or reuses a random per-user signing identity, aligns and signs the APK, verifies the result, and writes a manifest beside it. JDK `keytool` and Android SDK Build Tools are required.
+Use the exact DNS name configured in step 2, not a value from `/etc/fruitspy/config.json`. The patcher applies the slow-motion fix, matchmaking fix, and custom server patch in that order to all three ABIs, creates or reuses a random per-user signing identity, aligns and signs the APK, and verifies the result. The example explicitly chooses `patched.apk`; omit that second positional argument to write `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` beside the source APK. Existing outputs are refused. Only the APK is written by default; add `--report PATH` to save a diagnostic JSON build report.
+
+On the patching computer, use a supported Python release (3.11 or newer is recommended and also satisfies the server requirement), a JDK (`keytool`), and Android SDK Build Tools (`zipalign` and `apksigner`). Follow the root [README](../README.md) for dependency installation and tool discovery; the Java and Android tools are not server runtime dependencies.
 
 The first patched installation cannot update an original copy or a build signed by another key. Later builds from this computer can update one another because the local key is persistent. Back up the FruitSpy signing directory documented in `README.md`; never upload an original or patched APK, signing material, generated deployment manifest, or extracted game assets to the VPS or repository.
 

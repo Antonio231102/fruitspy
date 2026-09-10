@@ -26,6 +26,8 @@ Publish one stable DNS A record for the host. If the host is behind a router, fo
 
 ## Install
 
+The server requires Python 3.11 or newer and has no third-party runtime Python dependencies. This systemd installation also needs Python's `venv` support and pip; package installation uses the declared `setuptools>=77` build backend, normally downloaded by pip in an isolated build environment. On Debian/Ubuntu, install `python3` and `python3-venv` first. Install the firewall tooling used below (`nftables`) if it is not already present. APK signing tools belong on the client-patching computer, not a server-only host; see the root [README](README.md) for the separate patcher dependencies.
+
 The checked-in systemd unit expects this layout:
 
 ```text
@@ -175,7 +177,9 @@ python patcher/patch_apk.py original.apk patched.apk \
   --non-interactive
 ```
 
-The patcher rejects any whole-APK hash other than the supported clean release, applies the slow-motion fix, matchmaking fix, and custom server patch in that order to all three packaged ABIs, and writes a manifest beside the output. By default it discovers JDK `keytool` plus Android SDK `zipalign` and `apksigner`, creates a random per-user signing key on the first run, aligns and signs the APK, and verifies both alignment and its legacy-compatible v1 signature. Later builds reuse the same local identity for update compatibility.
+The patcher rejects any whole-APK hash other than the supported clean release and applies the slow-motion fix, matchmaking fix, and custom server patch in that order to all three packaged ABIs. It writes only the APK by default; `--report PATH` optionally saves the diagnostic JSON build report. By default it discovers JDK `keytool` plus Android SDK `zipalign` and `apksigner`, creates a random per-user signing key on the first run, aligns and signs the APK, and verifies both alignment and its legacy-compatible v1 signature. Later builds reuse the same local identity for update compatibility. These checks do not depend on saving a report.
+
+The example explicitly selects `patched.apk`. Without the second positional argument, the output is `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` beside the source APK. Existing output paths are refused; choose a fresh path for a subsequent build.
 
 Back up the FruitSpy signing directory documented in `README.md`. Losing it requires uninstalling the existing patched application before installing a build signed by a new key. Never upload source or generated APKs, signing keys, signing passwords, deployment manifests, packet captures, or device identifiers to the repository.
 

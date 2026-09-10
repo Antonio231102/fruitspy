@@ -4,6 +4,8 @@ Compatibility investigation and native fix for Fruit Ninja 1.7.6. This subprojec
 
 ## Status
 
+**Fully functional, with high confidence.** Accepted by the project owner on 2026-09-09 based on the recorded runtime results and native verification. Further long-session investigation or changes will be driven by user reports, not additional pre-release endurance testing.
+
 - Root cause identified with high confidence: the native frame delta uses process CPU time rather than elapsed time.
 - The fix redirects the timer to direct `clock_gettime(CLOCK_MONOTONIC)` helpers for `armeabi`, `armeabi-v7a`, and `x86`.
 - Frame gaps above 250 ms are replaced with the engine's normal first-frame delta of 16,667 microseconds.
@@ -12,7 +14,8 @@ Compatibility investigation and native fix for Fruit Ninja 1.7.6. This subprojec
 - The hardened ARMv7 implementation completed direct and relayed multiplayer games on Android 4.4.2 and Android 13 devices.
 - The hardened x86 implementation and final Unified APK restored normal pace by user report; x86 background/resume and sleep/wake behavior passed.
 - Exact-duration tests were waived in favor of qualitative speed confirmation plus emulator-to-real-device LAN synchronization. The final Unified APK passed three consecutive Android 9 x86 emulator-to-Galaxy S4 games with no desynchronization or disconnects, by user report.
-- Emulator graphics/host-crash issues are excluded under the user's Intel-driver assumption, not a proven root cause. This does not exclude the earlier S4 native socket crash. Legacy `armeabi`, long-session wrap, and broader runtime coverage remain pending.
+- Physical `armeabi` and `armeabi-v7a` gameplay and lifecycle checks passed; S20 120 Hz speed passed. Accelerated clock-wrap/guard verification passed 72 scenario runs and 222 native frame updates across all three ABIs. The integrated patcher passed nine tests and reproduced the qualified signed APK byte-for-byte.
+- Emulator graphics/host-crash issues remain excluded under the user's Intel-driver assumption, not a proven root cause. Historical observations and untested hardware/error paths remain documented; acceptance does not assert that every device or failure path has been tested.
 
 See `FINDINGS.md` for the evidence and implementation details, `VALIDATION.md` for the recorded validation boundary, `MANUAL_TEST_PLAN.md` for physical-device checks, and `ROADMAP.md` for remaining compatibility work.
 
@@ -52,6 +55,10 @@ python patcher/patch_apk.py
 ```
 
 The patcher accepts only the allowlisted clean Fruit Ninja 1.7.6 APK, announces the slow motion fix patch, matchmaking fix patch, and custom server patch in that order, requires a user-supplied IPv4 address or short DNS name, applies all three patches to every packaged ABI, and verifies the signed output. See the root `README.md` for complete patching and signing instructions.
+
+Use the root [README](../README.md) to install the patcher dependencies: a supported Python release (3.11 or newer recommended), a JDK with `keytool`, and Android SDK Build Tools with `zipalign` and `apksigner`. Ordinary patching does not require LLVM or Unicorn because it uses the checked-in native payloads.
+
+By default, only `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` is written beside the source APK. An explicit second positional argument overrides the output path; existing outputs are refused. Add `--report PATH` only to save a diagnostic JSON build report.
 
 ## Repository boundary
 

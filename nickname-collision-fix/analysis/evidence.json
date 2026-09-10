@@ -26,6 +26,30 @@
     "additional_device_matches": 0,
     "private_evidence_file": "build/integrated-patcher-proof.json"
   },
+  "clean_checkout_patcher_verification": {
+    "date_utc": "2026-09-10",
+    "commit": "44be857cfa3e5f4c948a0921fd4034a4457488ae",
+    "status": "passed",
+    "platform": "Windows x64",
+    "python_isolation_flags": ["-I", "-S"],
+    "checkout": "Independent git clone --no-local --no-hardlinks; no ignored build/dependency artifacts. User-supplied clean APK copied separately outside checkout.",
+    "external_tools": "Installed JDK keytool and Android SDK Build Tools, supplied explicitly; no project signing identity used.",
+    "patch_order": ["monotonic_clock", "nickname_collision", "gamespy_endpoint"],
+    "all_three_abis_verified": true,
+    "signed_custom_ipv4_and_dns_builds": true,
+    "fresh_signer_generated_and_reused": true,
+    "same_input_same_key_signed_apk_identical": true,
+    "unsigned_build_with_empty_path": true,
+    "missing_endpoint_rejected_without_output": true,
+    "unrelated_archive_entries_preserved": true,
+    "repository_tests_passed": 8,
+    "repository_tests_skipped": 1,
+    "skip_reason": "Real-APK test expects its input inside the checkout; four actual CLI builds exercised the separately supplied APK instead.",
+    "successful_cli_builds": 4,
+    "cleanup": "Temporary clone, copied input, generated outputs and temporary signing key/password files removed; absence verified. Original artifacts and installed apps unchanged.",
+    "boundary": "Same workstation with standard tools preinstalled; not a fresh OS installation, cross-platform test, device gameplay test or full Git-history audit.",
+    "private_evidence_file": "build/clean-checkout-20260910T015048Z/results.json"
+  },
   "libraries": [
     {
       "abi": "armeabi",

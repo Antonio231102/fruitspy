@@ -202,7 +202,6 @@ class ApkPatchTests(unittest.TestCase):
             output=Path("patched.apk"),
             server_host=None,
             non_interactive=True,
-            no_report=True,
             report=None,
         )
         with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
@@ -217,7 +216,6 @@ class ApkPatchTests(unittest.TestCase):
             output=None,
             server_host=None,
             non_interactive=False,
-            no_report=True,
             report=None,
         )
         with mock.patch("patcher.patch_apk.sys.stdin.isatty", return_value=True):
@@ -232,7 +230,7 @@ class ApkPatchTests(unittest.TestCase):
                     )
 
         self.assertEqual(source, Path("clean.apk"))
-        self.assertEqual(output, Path("clean - FruitSpy.apk"))
+        self.assertEqual(output, Path("Fruit Ninja v1.7.6 FruitSpy fn.example.net.apk"))
         self.assertEqual(server_host, "fn.example.net")
         self.assertIsNone(report)
 

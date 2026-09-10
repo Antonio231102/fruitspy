@@ -17,7 +17,7 @@ You need:
 - FruitSpy source code
 - Two test clients outside the server's home network for the first Internet test
 
-The DNS name patched into the APK must be fewer than 20 ASCII characters. `fn.example.net` fits; a long dynamic-DNS hostname might not.
+The DNS name patched into the APK must be at most 18 ASCII characters. `fn.example.net` fits; a long dynamic-DNS hostname might not.
 
 FruitSpy uses IPv4. An IPv6-only connection cannot host the current protocol.
 
@@ -47,7 +47,7 @@ Create a DNS `A` record that points to your public IPv4 address. If your ISP cha
 Requirements:
 
 - The record must resolve to an IPv4 address.
-- The complete hostname must be fewer than 20 ASCII characters.
+- The complete hostname must be at most 18 ASCII characters.
 - Every Internet-test APK must be patched with exactly this hostname.
 - Update the record whenever your public address changes.
 
@@ -175,7 +175,9 @@ From the FruitSpy directory, run the guided patcher:
 py -3 patcher\patch_apk.py
 ```
 
-Select the clean Fruit Ninja 1.7.6 APK and enter the exact DNS name from `config.local.json`. The patcher applies both compatibility fixes to all three ABIs, creates a random per-user signing key when needed, aligns and signs the output, and verifies it. JDK `keytool` and Android SDK Build Tools are required for the default installable output.
+Select the clean Fruit Ninja 1.7.6 APK and enter the exact DNS name configured in step 3, not a value from `config.local.json`. The patcher applies the slow-motion fix, matchmaking fix, and custom server patch in that order to all three ABIs, creates a random per-user signing key when needed, aligns and signs the output, and verifies it. JDK `keytool` and Android SDK Build Tools (`zipalign` and `apksigner`) are required on the patching computer, not on a server-only host; see the root [README](../README.md) for installation and tool discovery.
+
+By default, only `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` is written beside the source APK. An explicit second positional argument chooses another output path; existing outputs are refused. Add `--report PATH` only when you want a diagnostic JSON build report.
 
 The first patched installation cannot update an original copy signed by Halfbrick or a patched copy signed by another key. Back up anything important before uninstalling the existing app. Later APKs produced on this computer reuse the same local signing identity and can update each other.
 

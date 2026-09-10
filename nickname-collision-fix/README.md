@@ -25,10 +25,10 @@ See [FINDINGS.md](FINDINGS.md) for the diagnosis, ABI addresses, implementation 
 
 ## Build a corrected APK
 
-Run from the repository root with Python 3.10+, a JDK (`keytool`), and Android SDK build-tools (`zipalign`, `apksigner`):
+Run from the repository root with a supported Python release (3.11 or newer is recommended and also satisfies the server requirement), a JDK (`keytool`), and Android SDK Build Tools (`zipalign`, `apksigner`). See the root [README](../README.md) for dependency installation and tool discovery. Ordinary APK patching uses the Python standard library and the checked-in payloads; LLVM and Unicorn are only needed for the optional development workflows below.
 
 ```text
-python patcher/patch_apk.py "Fruit Ninja 1.7.6.apk" "FruitSpy.apk" --server-host 192.168.100.2
+python patcher/patch_apk.py "Fruit Ninja 1.7.6.apk" --server-host 192.168.100.2
 ```
 
 Use your FruitSpy IPv4 address or short DNS hostname for `--server-host`. The source must be the clean Fruit Ninja 1.7.6 APK with SHA-256:
@@ -37,7 +37,7 @@ Use your FruitSpy IPv4 address or short DNS hostname for `--server-host`. The so
 5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650
 ```
 
-The command writes the APK and `<output>.manifest.json`. Existing outputs are refused; choose a fresh filename for another build. The manifest records the ordered clock, nickname, and endpoint stages, exact nickname hook bytes, payload and library hashes, and signing verification. The nickname input hash matches the clock output hash; the final library hash includes the custom server patch.
+By default the patcher writes only `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` beside the source APK. An explicit second positional argument overrides the output path. Existing outputs are refused; choose a fresh filename for another build. Internal validation and report data remain available; `--report PATH` optionally saves a diagnostic JSON report containing the ordered clock, nickname, and endpoint stages, exact nickname hook bytes, payload and library hashes, and signing verification. The nickname input hash matches the clock output hash; the final library hash includes the custom server patch.
 
 - Signing is enabled by default and uses the main patcher's persistent local key directory. Reuse the key that signed the installed app to preserve update compatibility.
 - `--signing-dir PATH` selects that directory; `--android-sdk`, `--keytool`, `--zipalign`, and `--apksigner` override tool discovery.

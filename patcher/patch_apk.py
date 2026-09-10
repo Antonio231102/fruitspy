@@ -1008,14 +1008,8 @@ def collect_arguments(
 
     output = args.output
     if output is None:
-        output = source.with_name(f"{source.stem} - FruitSpy.apk")
-    if args.no_report:
-        report = None
-    elif args.report is not None:
-        report = args.report
-    else:
-        report = output.with_suffix(output.suffix + ".manifest.json")
-    return source, output, server_host, report
+        output = source.with_name(f"Fruit Ninja v1.7.6 FruitSpy {server_host}.apk")
+    return source, output, server_host, args.report
 
 
 def main() -> int:
@@ -1046,8 +1040,11 @@ def main() -> int:
     parser.add_argument("--keytool", type=Path)
     parser.add_argument("--zipalign", type=Path)
     parser.add_argument("--apksigner", type=Path)
-    parser.add_argument("--report", type=Path)
-    parser.add_argument("--no-report", action="store_true")
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="optionally write a diagnostic JSON build report to this path",
+    )
     parser.add_argument("--non-interactive", action="store_true")
     args = parser.parse_args()
 

@@ -6,7 +6,7 @@ The native game loop uses C `clock()` as if it were elapsed wall time. On Androi
 
 Confidence in this root cause is **high**. The relevant value is not merely an FPS counter: the native step path computes `(clock() - previous) / 1,000,000`, stores that float as frame delta, and passes it into the game update object before rendering.
 
-A binary fix is **validated and highly viable for Fruit Ninja 1.7.6 on 32-bit-capable devices**. The initial three-ABI patch redirected the frame timer to an elapsed wall-clock helper and corrected slow motion on an Android 9 emulator while remaining synchronized with a patched Galaxy S4 on Android 4.4.2 during LAN gameplay coordinated through the FruitSpy VPS. The hardened candidate replaces that helper with injected `CLOCK_MONOTONIC` code and guards abnormal frame gaps; this final implementation is statically verified but not yet runtime-tested.
+The current binary fix is **accepted as fully functional, with high confidence**, by the project owner on 2026-09-09. The initial wall-clock prototype established the diagnosis; the hardened implementation uses injected `CLOCK_MONOTONIC` code and guards abnormal frame gaps. Physical ARM gameplay, lifecycle and high-refresh checks, historical x86 runtime results, and accelerated native clock-boundary execution support this acceptance. See `VALIDATION.md` for exact artifacts, results and limitations. Further long-session investigation will be driven by user reports, not additional pre-release endurance testing.
 
 ## Scope and source identity
 
@@ -29,7 +29,7 @@ The initial investigation used a separately copied FruitSpy VPS APK that already
 
 Both candidates use the same signer as the existing FruitSpy VPS APK, permitting an update install without changing package identity.
 
-The current release-facing pipeline is `../patcher/patch_apk.py`. It starts from the allowlisted original APK, applies the same hardened clock transformation before the neutral user-configured endpoint transformation, and uses a persistent per-user signing identity rather than the historical development signer.
+The current release-facing pipeline is `../patcher/patch_apk.py`. It starts from the allowlisted original APK and applies the hardened clock correction, nickname-collision matchmaking fix, and neutral user-configured endpoint transformation in that order. It uses a persistent per-user signing identity rather than the historical development signer. Ordinary builds write only a server-named APK; `--report PATH` explicitly requests a diagnostic JSON build report.
 
 ## Runtime validation
 
@@ -119,7 +119,7 @@ Implementation properties:
 - Exact input, payload, and output hashes fail closed on unsupported binaries
 - Deterministic payload reproduction from the checked-in assembly
 
-The hardened APK is aligned, signed, and statically verified. Runtime validation of the injected paths is still required before promoting it beyond candidate status.
+The integrated main patcher produced an aligned, signed APK byte-identical to the qualified build. Recorded runtime evidence and accelerated execution of all three native timer paths support the owner's high-confidence functional acceptance. Untested hardware and error paths remain documented; no new timing-patch change is scheduled solely for speculative long-session concerns.
 
 ### Initial wall-clock prototype
 
@@ -137,7 +137,7 @@ Multiplying the measured delta by a device-specific constant would hide the symp
 
 This patch does not make the APK universal on every current Android device:
 
-- The APK contains no `arm64-v8a` library. A 64-bit-only device cannot load it.
+- The APK contains no `arm64-v8a` library. ARM64 devices require 32-bit ARM compatibility to run it; a 64-bit-only device cannot load it.
 - Android 14 blocks normal installation of apps targeting below API 23. Because this APK effectively targets API 7, testing requires `adb install --bypass-low-target-sdk-block ...` unless it was already installed before the OS upgrade.
 - Storage, permission, audio, and vendor graphics behavior are separate compatibility surfaces.
 

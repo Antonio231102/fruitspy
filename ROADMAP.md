@@ -54,7 +54,13 @@ The direct-first service and bounded relay fallback are deployed:
 - Replaced the relay's unconditional 900-second allocation timer after an accelerated regression proved it terminated active traffic at the original deadline. `session_seconds` now measures inactivity from the last authenticated bound-endpoint packet; the expiry callback reschedules against that timestamp, while unrelated sources cannot refresh it. The production VPS then sustained an established, two-way relay for 905.005 seconds: 92 bidirectional rounds, 184 forwarded packets, and zero drops. The last periodic record at 900.996 seconds proves forwarding crossed the former absolute deadline. The accelerated regression also proved the relay closes after one full idle interval.
 - Added per-attempt operator diagnosis across the complete server-observed path. New fixed-label counters record QR availability/registration, PeerChat registration/join, NatNeg session creation/pairing, and relay readiness; Server Browser and QR lifecycle logs now use stable `service`/`event` fields. `python -m fruitspy.diagnostics` captures a privacy-safe pre-game baseline and reports Availability, QR2, PeerChat, discovery, NatNeg, direct/relay, and rejection deltas after the attempt. Failed games with a direct success report or an established relay forwarding without drops are explicitly classified beyond the FruitSpy server boundary. Five diagnosis regressions, 46 focused service tests on both workstation and VPS, a live VPS capture/compare exercise, and the 115-test complete suite passed.
 
-Next: complete mixed local/remote home hosting when the alternate public-IPv4 residence is ready, then begin the unified deterministic APK patch pipeline. The two-residential-NAT case is deferred.
+The unified deterministic APK patch pipeline is complete. Remaining deployment coverage is mixed local/remote home hosting when the alternate public-IPv4 residence is ready; the two-residential-NAT case remains deferred. Publication preparation now centers on the open license, provenance, and owner privacy decisions below, not further speculative slow-motion testing.
+
+## Release acceptance and priorities — 2026-09-09
+
+- **Slow-motion patch: fully functional, with high confidence**, accepted by the project owner on the recorded physical-device, lifecycle, high-refresh, native boundary, and integrated-patcher evidence. The main patcher passed nine tests and 66 native nickname scenarios and reproduced the previously qualified signed APK byte-for-byte.
+- **Stale-room/dead-session improvements: lower priority, not a public-release blocker.** Bounded PeerChat liveness detection, cleanup that cannot wait indefinitely on notifications, and safer stale-advertisement handling remain deferred improvements, not implemented fixes. Existing expiry behavior and its limitations remain documented.
+- **Long-session timing or stability issues: investigate in response to user reports.** No additional 72-minute session or speculative long-session patch is required for release. The accelerated native wrap/guard checks already passed for all three ABIs. Preserve the current implementation unless evidence from reported issues warrants an improvement.
 
 ## Phase 1 — Freeze the LAN baseline
 
@@ -164,31 +170,36 @@ Purpose: publish a reproducible preservation project without redistributing prop
 ### Unified client patch pipeline
 
 - [x] Replace the endpoint-patcher/clock-patcher chain with one deterministic pipeline that starts from the allowlisted Fruit Ninja 1.7.6 APK hash.
-- [x] Apply the monotonic clock correction followed by the configurable FruitSpy endpoint patch in a defined order within that pipeline.
-- [x] Apply both transformations to `armeabi`, `armeabi-v7a`, and `x86`. The legacy `armeabi` NatNeg branch targets were mapped to their ABI-specific instruction offsets and are guarded by exact preimages.
+- [x] Apply the slow-motion fix, nickname-collision matchmaking fix, and configurable custom server patch in that order within the pipeline.
+- [x] Apply all three transformations to `armeabi`, `armeabi-v7a`, and `x86`. The legacy `armeabi` NatNeg branch targets were mapped to their ABI-specific instruction offsets and are guarded by exact preimages.
 - [x] Reject unsupported or modified whole APKs before writing output, then retain per-library and per-instruction fail-closed checks.
-- [x] Support an explicit unsigned APK and machine-readable manifest containing input, output, per-library, payload, and tool-version hashes.
+- [x] Support an explicit unsigned APK and an optional `--report PATH` diagnostic manifest containing input, output, per-library, payload, and tool-version hashes. Default builds write only the APK; internal checks and report data remain unchanged.
 - [x] Make the default output installable without a shared project key: generate and persist one random per-user key, align before signing, enable legacy-compatible v1 signing, and verify alignment plus the final signature. Retain `--unsigned` for external signing workflows.
 - [x] Integrate the compatibility work as `slow-motion-fix/` and keep the unified release-facing builder in `patcher/`; only reproducible assembly and payload binaries are included, never APK inputs, APK outputs, or extracted proprietary libraries.
 - [x] Add automated composition tests for IPv4 and short-DNS endpoint targets across `armeabi`, `armeabi-v7a`, and `x86`, plus a locally activated clean-APK integration case.
 
 ### Repository and release hygiene
 
-- [x] Remove the tracked deployment-specific `server/apk-patch-map.json` and `server/apk-patch-report.json`; manifests are generated beside local outputs and remain operator artifacts.
+- [x] Remove `server/apk-patch-map.json` and `server/apk-patch-report.json` from the pushed reachable history. Rewritten main `cc17743` has 46 commits rather than the audited 47 because one report-only commit was pruned; both paths and their three historical blobs are absent from rewritten local history and a fresh remote clone. All unrelated tree content was preserved. These retired generated reports are not repository inputs or supported reference artifacts; use the patcher's explicit `--report PATH` option for a new operator-local diagnostic report.
+- [x] Accept GitHub's retention of the old, non-sensitive generated reports. The owner chose to keep the existing repository as it is; no further hosting-side purge or repository migration is planned. This is not a release blocker and does not imply that retained objects or existing clones were erased.
 - [ ] Choose and add a project license; do not assume a license without owner approval.
 - [ ] Publish source, tests, protocol notes, and deterministic patch tooling only.
 - [ ] Never publish Fruit Ninja APKs, extracted native libraries, signing keystores, signing passwords, packet captures, or copyrighted game assets.
 - [ ] Add a security policy, responsible-disclosure contact, contribution guidelines, and a supported-version/topology statement.
 - [ ] Document the legacy protocol's lack of modern transport security, operational IP logging, retention policy, and data-minimization controls.
-- [ ] Run full Git-history secret/proprietary-artifact scanning and dependency review.
+- [x] Complete the full reachable Git-history credential/proprietary-artifact audit: 47 commits, 361 historical blobs, and 12 pending tracked files were covered at the audit checkpoint. Gitleaks and supplementary inspection found zero confirmed credential leaks or proprietary game binaries; the small native payloads are intentionally authored project code. This is a bounded audit result, not legal or publication approval. The pre-rewrite local evidence is retained under ignored `build/publication-audit-20260910T020432Z/publication-report.json`, not distributed as a repository artifact.
+- [x] Review declared direct dependencies and applicable advisories. The server has no third-party runtime dependencies; the audit identified non-blocking setuptools build-backend baseline work and the optional Unicorn validation engine's license/provenance boundary. This was not an inventory of every installed external tool or transitive component.
+- [ ] Select and qualify a maintained build-backend baseline and review packaged distribution contents before publishing packages.
+- [ ] Resolve source provenance, required third-party notices, and owner approval for publishing author/committer attribution and operational/test metadata. Removing the two generated reports does not decide whether the remaining historical attribution and test metadata should be public.
 - [ ] Correct all status documents and manifests to match the release candidate.
-- [ ] Push the deployed local commits, tag the accepted checkpoint, and publish versioned alpha checksums and migration notes.
+- [ ] Commit and push the final reviewed release contents after approval, tag the accepted checkpoint, and publish versioned alpha checksums and migration notes. The reachable-history cleanup has already been pushed.
 - [ ] Complete legal and trademark review before changing repository visibility.
 
 Exit criteria:
 
-- [ ] A clean checkout reproduces the patch from a user-supplied lawful APK without using a project-owned signing key.
-- [ ] Secret scanning, dependency review, and legal review are accepted.
+- [x] A clean checkout reproduces the patch from a user-supplied lawful APK without using a project-owned signing key. Verified on Windows at pre-rewrite commit `44be857`: isolated Python (`-I -S`), fresh local key generation/reuse, signed IPv4 and DNS builds across all three ABIs, identical signed output on repeat, and unsigned output with an empty tool `PATH`. Eight repository-only tests passed; the real-APK test skipped because the supplied APK was deliberately outside the checkout, and four actual CLI builds covered it separately. Temporary APKs and signing material were removed. Details: `nickname-collision-fix/analysis/evidence.json`.
+- [x] Complete credential/proprietary-artifact scanning and the scoped direct-dependency review; retain their limitations and findings.
+- [ ] Accept the license/provenance, legal/trademark, and owner privacy decisions before publication. Build-backend baseline follow-up remains non-blocking source-release hygiene and should be completed before publishing packages.
 - [ ] Automated tests plus LAN, same-egress, and independent-network smoke matrices pass against the exact release candidate.
 - [ ] Repository visibility changes only after the owner approves the license and release review.
 
@@ -200,7 +211,7 @@ These are not prerequisites for online play:
 - Persistent user accounts, rankings, or moderation identities.
 - Multi-region matchmaking and cross-region relay selection.
 - Horizontal service splitting or a durable distributed state store.
-- Support for Fruit Ninja versions other than 1.7.6 or the untouched legacy `armeabi` library.
+- Support for Fruit Ninja versions other than the allowlisted 1.7.6 APK.
 - Two-residential-NAT real-device testing. Residential Wi-Fi/cellular relay play is proven; a second independently routed household remains unavailable for this optional topology.
 
 Add these only after the single-node online path is proven and their protocol, operational, and privacy costs are understood.
