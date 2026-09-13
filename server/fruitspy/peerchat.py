@@ -106,7 +106,7 @@ class PeerChatServer:
         self.metrics.increment("fruitspy_peerchat_events_total", event="connected")
         try:
             await client.run()
-        except (ConnectionError, asyncio.IncompleteReadError):
+        except (TimeoutError, ConnectionError, asyncio.IncompleteReadError):
             pass
         except ValueError as error:
             LOG.warning(
@@ -758,7 +758,7 @@ class PeerChatClient:
                 continue
             try:
                 await client.send(line)
-            except ConnectionError:
+            except (TimeoutError, ConnectionError):
                 continue
 
     async def disconnect(self, reason: str) -> None:

@@ -1,5 +1,7 @@
 import asyncio
+import errno
 import unittest
+from unittest import mock
 from dataclasses import replace
 
 from fruitspy.crypto import PeerChatCipher
@@ -82,6 +84,102 @@ class PeerChatTests(unittest.IsolatedAsyncioTestCase):
         await client.send(f"USER {nick} 0 * :{nick}")
         await client.read_until(f"376 {nick}")
         return client
+
+    async def test_socket_timeout_releases_state_without_escaping_connection_handler(self) -> None:
+        self.service.admission.total_limit = 2
+        loop = asyncio.get_running_loop()
+        loop_errors = []
+        previous_handler = loop.get_exception_handler()
+        loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
+        clients = []
+        try:
+            failed = await self.connect_player("timedout")
+            clients.append(failed)
+            survivor = await self.connect_player("survivor")
+            clients.append(survivor)
+            channel_name = "#GSP!FruitNinjaand!timeout"
+            for client in clients:
+                await client.send(f"JOIN {channel_name}")
+                await client.read_until("End of NAMES list")
+            await failed.read_until("survivor!survivor@")
+
+            # Inject the socket error into actual asyncio transport teardown,
+            # so both read() and wait_closed() observe the same exception.
+            failed_server = self.service.clients["timedout"]
+            failed_server.writer.transport._force_close(
+                TimeoutError(errno.ETIMEDOUT, "Connection timed out")
+            )
+            quit_message = await survivor.read_until("QUIT :Client exited")
+            self.assertIn("timedout!timedout@", quit_message)
+            await survivor.send("PING still-connected")
+            await survivor.read_until("PONG :still-connected")
+            self.assertEqual(self.service.admission.total, 1)
+            self.assertNotIn("timedout", self.service.clients)
+            self.assertEqual(
+                set(self.service.channels[channel_name.casefold()].users), {"survivor"}
+            )
+
+            replacement = await self.connect_player("timedout")
+            clients.append(replacement)
+            await replacement.send(f"JOIN {channel_name}")
+            await replacement.read_until("End of NAMES list")
+            await survivor.read_until("timedout!timedout@")
+            self.assertEqual(
+                set(self.service.channels[channel_name.casefold()].users),
+                {"timedout", "survivor"},
+            )
+            await asyncio.sleep(0)
+            self.assertEqual(loop_errors, [])
+        finally:
+            await asyncio.gather(*(client.close() for client in clients), return_exceptions=True)
+            await asyncio.sleep(0)
+            loop.set_exception_handler(previous_handler)
+
+    async def test_recipient_timeout_does_not_disconnect_sender_or_skip_other_peers(self) -> None:
+        loop = asyncio.get_running_loop()
+        loop_errors = []
+        previous_handler = loop.get_exception_handler()
+        loop.set_exception_handler(lambda _loop, context: loop_errors.append(context))
+        clients = []
+        server_writers = []
+        try:
+            for nick in ("sender", "timedout", "survivor"):
+                client = await self.connect_player(nick)
+                clients.append(client)
+                server_writers.append(self.service.clients[nick].writer)
+                await client.send("JOIN #timeout")
+                await client.read_until("End of NAMES list")
+            sender, _, survivor = clients
+            with mock.patch.object(
+                server_writers[1],
+                "drain",
+                side_effect=TimeoutError(errno.ETIMEDOUT, "Connection timed out"),
+            ):
+                await sender.send("PRIVMSG #timeout :still-connected")
+                message = await survivor.read_until("PRIVMSG #timeout :still-connected")
+                self.assertIn("sender!sender@", message)
+                await sender.send("PING still-connected")
+                await sender.read_until("PONG :still-connected")
+                await sender.send("QUIT :Leaving")
+                await survivor.read_until("QUIT :Leaving")
+                self.assertEqual(await asyncio.wait_for(sender.reader.read(1), 2), b"")
+            self.assertEqual(self.service.admission.total, 2)
+            self.assertNotIn("sender", self.service.clients)
+            self.assertEqual(
+                set(self.service.channels["#timeout"].users), {"timedout", "survivor"}
+            )
+            await asyncio.sleep(0)
+            self.assertEqual(loop_errors, [])
+        finally:
+            for writer in server_writers:
+                writer.close()
+            await asyncio.gather(
+                *(writer.wait_closed() for writer in server_writers),
+                *(client.close() for client in clients),
+                return_exceptions=True,
+            )
+            await asyncio.sleep(0)
+            loop.set_exception_handler(previous_handler)
 
     async def test_usrip_reports_observed_address_in_gamespy_format(self) -> None:
         client = await EncryptedPeerClient.connect(self.port)
