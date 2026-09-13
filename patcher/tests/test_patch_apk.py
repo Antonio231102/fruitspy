@@ -11,6 +11,7 @@ import unittest
 import zipfile
 
 from patcher import nickname_patch
+from patcher.identity_patch import ORIGINAL_PACKAGE, _utf16_string, patch_identity
 from patcher.patch_apk import (
     CLEAN_APK_SHA256,
     CLOCK_PATCHES,
@@ -24,6 +25,9 @@ from patcher.patch_apk import (
     ensure_signing_material,
     collect_arguments,
     inject_payload,
+    is_signature_entry,
+    parse_launcher_name,
+    parse_package_name,
     parse_server_host,
     patch_apk,
     patch_clock_library,
@@ -35,6 +39,56 @@ from patcher.patch_apk import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CLEAN_APK = PROJECT_ROOT / "Fruit Ninja 1.7.6.apk"
+
+
+def binary_chunks(data: bytes):
+    _, start, size = struct.unpack_from("<HHI", data)
+    assert size == len(data)
+    while start < size:
+        kind, header, length = struct.unpack_from("<HHI", data, start)
+        assert 8 <= header <= length and length % 4 == 0
+        assert start + length <= size
+        yield kind, start, header, length
+        start += length
+
+
+def manifest_elements(data: bytes) -> list[tuple[str, dict]]:
+    strings = []
+    elements = []
+    for kind, start, header, _ in binary_chunks(data):
+        if kind == 1:
+            count, _, flags, strings_start = struct.unpack_from("<IIII", data, start + 8)
+            assert not flags & 0x100
+            for index in range(count):
+                offset = start + strings_start + struct.unpack_from(
+                    "<I", data, start + header + index * 4
+                )[0]
+                units = struct.unpack_from("<H", data, offset)[0]
+                offset += 2
+                if units & 0x8000:
+                    units = ((units & 0x7FFF) << 16) | struct.unpack_from("<H", data, offset)[0]
+                    offset += 2
+                end = offset + units * 2
+                assert data[end : end + 2] == b"\0\0"
+                strings.append(data[offset:end].decode("utf-16-le"))
+        elif kind == 0x102:
+            extension = start + header
+            _, name, attributes_start, attributes_size, count = struct.unpack_from(
+                "<IIHHH", data, extension
+            )
+            attributes = {}
+            for index in range(count):
+                attribute = extension + attributes_start + index * attributes_size
+                _, attribute_name, raw, _, _, value_type, value = struct.unpack_from(
+                    "<IIIHBBI", data, attribute
+                )
+                attributes[strings[attribute_name]] = (
+                    value_type,
+                    strings[value] if value_type == 3 else value,
+                    None if raw == 0xFFFFFFFF else strings[raw],
+                )
+            elements.append((strings[name], attributes))
+    return elements
 
 
 def endpoint_fixture(abi: str) -> bytes:
@@ -203,13 +257,15 @@ class ApkPatchTests(unittest.TestCase):
             server_host=None,
             non_interactive=True,
             report=None,
+            package_name=None,
+            launcher_name=None,
         )
-        with mock.patch("sys.stderr", new_callable=io.StringIO) as stderr:
-            with self.assertRaises(SystemExit):
+        with mock.patch("sys.stderr", new_callable=io.StringIO):
+            with self.assertRaises(SystemExit) as error:
                 collect_arguments(parser, args)
-        self.assertIn("--server-host is required", stderr.getvalue())
+        self.assertEqual(error.exception.code, 2)
 
-    def test_interactive_prompt_collects_source_and_required_endpoint(self) -> None:
+    def test_interactive_optional_names_are_independent_and_follow_endpoint(self) -> None:
         parser = ArgumentParser()
         args = Namespace(
             source=None,
@@ -217,22 +273,108 @@ class ApkPatchTests(unittest.TestCase):
             server_host=None,
             non_interactive=False,
             report=None,
+            package_name=None,
+            launcher_name=None,
         )
-        with mock.patch("patcher.patch_apk.sys.stdin.isatty", return_value=True):
-            with mock.patch(
-                "builtins.input",
-                side_effect=["clean.apk", "fn.example.net"],
-            ):
-                with mock.patch("sys.stdout", new_callable=io.StringIO):
-                    source, output, server_host, report = collect_arguments(
-                        parser,
-                        args,
+        for package, launcher in (
+            ("", ""),
+            ("org.example.fruitspy", ""),
+            ("", "FruitSpy Local"),
+            ("org.example.fruitspy", "FruitSpy Local"),
+        ):
+            with self.subTest(package=package, launcher=launcher):
+                with (
+                    mock.patch("patcher.patch_apk.sys.stdin.isatty", return_value=True),
+                    mock.patch(
+                        "builtins.input",
+                        side_effect=["clean.apk", "fn.example.net", package, launcher],
+                    ),
+                    mock.patch("sys.stdout", new_callable=io.StringIO),
+                ):
+                    source, output, host, chosen_package, chosen_launcher, report = (
+                        collect_arguments(parser, args)
                     )
+                self.assertEqual(source, Path("clean.apk"))
+                self.assertEqual(host, "fn.example.net")
+                self.assertEqual(chosen_package, package or None)
+                self.assertEqual(chosen_launcher, launcher or None)
+                self.assertIsNone(report)
 
-        self.assertEqual(source, Path("clean.apk"))
-        self.assertEqual(output, Path("Fruit Ninja v1.7.6 FruitSpy fn.example.net.apk"))
-        self.assertEqual(server_host, "fn.example.net")
-        self.assertIsNone(report)
+    def test_noninteractive_omitted_names_do_not_prompt(self) -> None:
+        args = Namespace(
+            source=Path("clean.apk"), output=None, server_host="fn.example.net",
+            non_interactive=True, report=None, package_name=None, launcher_name=None,
+        )
+        with (
+            mock.patch("patcher.patch_apk.sys.stdin.isatty", return_value=True),
+            mock.patch("builtins.input", side_effect=AssertionError("unexpected prompt")),
+        ):
+            result = collect_arguments(ArgumentParser(), args)
+        self.assertEqual(result[3:5], (None, None))
+
+    def test_default_filename_uses_launcher_and_avoids_duplicate_fruitspy(self) -> None:
+        for launcher, expected in (
+            (None, "Fruit Ninja FruitSpy - fn.example.net.apk"),
+            ("FruitSpy", "FruitSpy - fn.example.net.apk"),
+            ("fruitspy", "fruitspy FruitSpy - fn.example.net.apk"),
+            ("FruitSpy Local", "FruitSpy Local FruitSpy - fn.example.net.apk"),
+        ):
+            with self.subTest(launcher=launcher):
+                args = Namespace(
+                    source=Path("inputs/clean.apk"), output=None, server_host="fn.example.net",
+                    non_interactive=True, report=None, package_name=None, launcher_name=launcher,
+                )
+                result = collect_arguments(ArgumentParser(), args)
+                self.assertEqual(result[1], Path("inputs") / expected)
+
+    def test_unusable_default_filename_requires_explicit_output_without_changing_label(self) -> None:
+        for launcher in ("../FruitSpy", "Fruit:Spy", "a" * 256, "\u5fcd" * 100):
+            with self.subTest(launcher=launcher):
+                args = Namespace(
+                    source=Path("inputs/clean.apk"), output=None, server_host="192.0.2.1",
+                    non_interactive=True, report=None, package_name=None, launcher_name=launcher,
+                )
+                with self.assertRaises(ValueError):
+                    collect_arguments(ArgumentParser(), args)
+                args.output = Path("chosen.apk")
+                result = collect_arguments(ArgumentParser(), args)
+                self.assertEqual(result[1], args.output)
+                self.assertEqual(result[4], launcher)
+
+    def test_package_syntax_and_resource_field_capacity(self) -> None:
+        maximum = "org." + "a" * 123
+        self.assertEqual(parse_package_name(maximum), maximum)
+        for invalid in (
+            maximum + "a", "single", "org..app", "org.2app",
+            "org._app", "org.app-name", "org.\u00e1pp",
+        ):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ArgumentTypeError):
+                    parse_package_name(invalid)
+
+    def test_launcher_name_rejects_controls_and_unpaired_surrogates(self) -> None:
+        for invalid in ("", "   ", "A\nB", "A\x00B", "A\x1bB", "A\ud800B"):
+            with self.subTest(invalid=repr(invalid)):
+                with self.assertRaises(ArgumentTypeError):
+                    parse_launcher_name(invalid)
+
+    def test_binary_strings_round_trip_utf16_units_and_extended_lengths(self) -> None:
+        for value in (
+            "Caf\u00e9 \u5fcd\u8005 \U0001d11e",
+            "a" * 0x7FFF,
+            "a" * 0x8000,
+            "a" * 0x7FFE + "\U0001d11e",
+        ):
+            with self.subTest(scalars=len(value)):
+                encoded = _utf16_string(parse_launcher_name(value))
+                length = struct.unpack_from("<H", encoded)[0]
+                start = 2
+                if length & 0x8000:
+                    length = ((length & 0x7FFF) << 16) | struct.unpack_from("<H", encoded, 2)[0]
+                    start = 4
+                end = start + length * 2
+                self.assertEqual(encoded[start:end].decode("utf-16-le"), value)
+                self.assertEqual(encoded[end:], b"\0\0")
 
     def test_endpoint_patch_covers_every_abi(self) -> None:
         for abi in TARGET_ABIS:
@@ -424,6 +566,146 @@ class ApkPatchTests(unittest.TestCase):
                             self.assert_combined_transformation(
                                 source, library, records[abi], host, abi
                             )
+
+
+    @unittest.skipUnless(
+        CLEAN_APK.is_file(),
+        "requires a locally supplied clean Fruit Ninja 1.7.6 APK",
+    )
+    def test_real_apk_removes_lvl_only_for_a_changed_package(self) -> None:
+        from patcher.lvl_patch import patch_dex, patch_library as patch_lvl_library
+
+        host = "games.example.net"
+        native_paths = {f"lib/{abi}/libmortargame.so": abi for abi in TARGET_ABIS}
+        with zipfile.ZipFile(CLEAN_APK) as source, tempfile.TemporaryDirectory() as directory:
+            original_dex = source.read("classes.dex")
+            lvl_dex, _ = patch_dex(original_dex)
+            base_libraries = {}
+            lvl_libraries = {}
+            base_records = {}
+            for path, abi in native_paths.items():
+                base_libraries[path], base_records[abi] = patch_library(source.read(path), host, abi)
+                lvl_libraries[path], _ = patch_lvl_library(base_libraries[path], abi)
+                self.assertNotEqual(lvl_libraries[path], base_libraries[path])
+
+            for name, options, remove_lvl in (
+                ("default", {}, False),
+                ("original-package", {"package_name": ORIGINAL_PACKAGE}, False),
+                ("launcher-only", {"launcher_name": "FruitSpy Local"}, False),
+                (
+                    "original-and-launcher",
+                    {"package_name": ORIGINAL_PACKAGE, "launcher_name": "FruitSpy Local"},
+                    False,
+                ),
+                ("custom-package", {"package_name": "org.example.fruitspy"}, True),
+                (
+                    "custom-and-launcher",
+                    {"package_name": "org.example.fruitspy", "launcher_name": "FruitSpy Local"},
+                    True,
+                ),
+            ):
+                with self.subTest(identity=name):
+                    output = Path(directory) / f"{name}.apk"
+                    manifest = patch_apk(CLEAN_APK, output, host, **options)
+                    expected_order = ["monotonic_clock", "nickname_collision", "gamespy_endpoint"]
+                    if remove_lvl:
+                        expected_order.append("lvl_removal")
+                    expected_order.extend(
+                        key for key in ("package_name", "launcher_name") if options.get(key) is not None
+                    )
+                    self.assertEqual(manifest["patch_order"], expected_order)
+                    records = {record["abi"]: record for record in manifest["libraries"]}
+                    self.assertEqual(set(records), set(TARGET_ABIS))
+                    with zipfile.ZipFile(output) as patched:
+                        self.assertEqual(
+                            patched.namelist(),
+                            [entry for entry in source.namelist() if not is_signature_entry(entry)],
+                        )
+                        self.assertEqual(patched.comment, source.comment)
+                        self.assertEqual(
+                            patched.read("classes.dex"), lvl_dex if remove_lvl else original_dex
+                        )
+                        for path, abi in native_paths.items():
+                            library = patched.read(path)
+                            record = records[abi]
+                            expected = lvl_libraries[path] if remove_lvl else base_libraries[path]
+                            self.assertEqual(library, expected)
+                            self.assertEqual(record["output_sha256"], sha256_bytes(library))
+                            for key in ("input_sha256", "clock", "nickname", "endpoint"):
+                                self.assertEqual(record[key], base_records[abi][key])
+                            if remove_lvl:
+                                self.assertEqual(
+                                    record["lvl"]["input_sha256"], sha256_bytes(base_libraries[path])
+                                )
+                                self.assertEqual(record["lvl"]["output_sha256"], sha256_bytes(library))
+                            else:
+                                self.assertNotIn("lvl", record)
+
+                        elements = manifest_elements(patched.read("AndroidManifest.xml"))
+                        self.assertEqual(
+                            elements[0][1]["package"][1], options.get("package_name") or ORIGINAL_PACKAGE
+                        )
+                        if options.get("launcher_name") is not None:
+                            application = next(attrs for tag, attrs in elements if tag == "application")
+                            self.assertEqual(application["label"][1], options["launcher_name"])
+                        identity_entries = set()
+                        if options.get("package_name") is not None:
+                            identity_entries.update(("AndroidManifest.xml", "resources.arsc"))
+                        if options.get("launcher_name") is not None:
+                            identity_entries.add("AndroidManifest.xml")
+                        if remove_lvl:
+                            identity_entries.add("classes.dex")
+                        for entry in patched.namelist():
+                            if entry not in native_paths and entry not in identity_entries:
+                                self.assertEqual(patched.read(entry), source.read(entry), entry)
+    @unittest.skipUnless(
+        CLEAN_APK.is_file(),
+        "requires a locally supplied clean Fruit Ninja 1.7.6 APK",
+    )
+    def test_identity_keeps_resource_lookup_namespace_and_components_consistent(self) -> None:
+        with zipfile.ZipFile(CLEAN_APK) as archive:
+            original_xml = archive.read("AndroidManifest.xml")
+            original_resources = archive.read("resources.arsc")
+            original_elements = manifest_elements(original_xml)
+            for package, label in (
+                (None, None),
+                ("org.example.fruitspy", None),
+                (None, "Caf\u00e9 \u5fcd\u8005 \U0001d11e"),
+                ("org." + "a" * 123, "FruitSpy Local"),
+            ):
+                with self.subTest(package=package, label=label):
+                    entries, _ = patch_identity(
+                        archive, package_name=package, launcher_name=label
+                    )
+                    xml = entries.get("AndroidManifest.xml", original_xml)
+                    resources = entries.get("resources.arsc", original_resources)
+                    elements = manifest_elements(xml)
+                    expected = [(name, dict(attributes)) for name, attributes in original_elements]
+                    expected_package = package or ORIGINAL_PACKAGE
+                    if package is not None:
+                        expected[0][1]["package"] = (3, package, package)
+                    if label is not None:
+                        next(attrs for name, attrs in expected if name == "application")["label"] = (
+                            3, label, label
+                        )
+                    self.assertEqual(elements, expected)
+                    packages = [
+                        start for kind, start, _, _ in binary_chunks(resources) if kind == 0x200
+                    ]
+                    self.assertEqual(len(packages), 1)
+                    name_start = packages[0] + 12
+                    resource_package = resources[name_start : name_start + 256].decode(
+                        "utf-16-le"
+                    ).split("\0", 1)[0]
+                    self.assertEqual(resource_package, expected_package)
+                    self.assertEqual(
+                        resources[:name_start] + resources[name_start + 256:],
+                        original_resources[:name_start] + original_resources[name_start + 256:],
+                    )
+                    if package is None:
+                        self.assertEqual(resources, original_resources)
+                    if package is None and label is None:
+                        self.assertEqual(xml, original_xml)
 
 
 if __name__ == "__main__":

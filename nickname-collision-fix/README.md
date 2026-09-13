@@ -19,7 +19,7 @@ The guided main-patcher build was verified on 2026-09-09: it applies the request
 - The configured nickname is not edited or suffix-stripped. Each connection requests it exactly, including an intentional numeric suffix; an empty setting leaves the game's existing generated candidate unchanged.
 - Actual ARMv5/ARMv6 hardware and direct Internet NAT traversal remain unqualified; direct LAN gameplay is qualified. Actual legacy-hardware tests are not a release gate at the user's direction; hardware-specific issues go through user feedback and the issue tracker. No further mobile-data or relay-specific testing is planned unless an observed issue makes it necessary. All game UI actions remain user-only. The normal three-ABI release APK is unchanged; the legacy-only APK is a qualification artifact.
 
-The canonical APK builder is `patcher/patch_apk.py`, with the nickname implementation in `patcher/nickname_patch.py`. It applies the **slow-motion fix → matchmaking fix → custom server patch**, then aligns and signs the APK. This subfolder retains the native payload source/binaries, payload build tools, regression harness, and findings; it no longer provides a separate APK builder. Integration does not change the native payloads or server behavior.
+The canonical APK builder is `patcher/patch_apk.py`, with the nickname implementation in `patcher/nickname_patch.py`. It applies the **slow-motion fix → matchmaking fix → custom server patch**, followed by conditional Java/native LVL removal for a changed package, optional identity edits, alignment and signing. This subfolder retains the native payload source/binaries, payload build tools, regression harness, and findings; it no longer provides a separate APK builder. Integration does not change the nickname payloads or server behavior.
 
 See [FINDINGS.md](FINDINGS.md) for the diagnosis, ABI addresses, implementation invariants, and validation evidence.
 
@@ -37,12 +37,13 @@ Use your FruitSpy IPv4 address or short DNS hostname for `--server-host`. The so
 5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650
 ```
 
-By default the patcher writes only `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` beside the source APK. An explicit second positional argument overrides the output path. Existing outputs are refused; choose a fresh filename for another build. Internal validation and report data remain available; `--report PATH` optionally saves a diagnostic JSON report containing the ordered clock, nickname, and endpoint stages, exact nickname hook bytes, payload and library hashes, and signing verification. The nickname input hash matches the clock output hash; the final library hash includes the custom server patch.
+By default the patcher writes only `<launcher name> FruitSpy - <IP/hostname>.apk` beside the source APK, or `FruitSpy - <IP/hostname>.apk` when the launcher name is exactly `FruitSpy`. Skipping launcher customization uses `Fruit Ninja` as the filename's launcher name. An explicit second positional argument overrides the output path; use it if the display name cannot form a portable filename. Existing outputs are refused; choose a fresh filename for another build. Internal validation and report data remain available; `--report PATH` optionally saves a diagnostic JSON report containing the ordered clock, nickname, and endpoint stages, exact nickname hook bytes, payload and library hashes, and signing verification. The nickname input hash matches the clock output hash; the final library hash includes the custom server patch.
 
-- Signing is enabled by default and uses the main patcher's persistent local key directory. Reuse the key that signed the installed app to preserve update compatibility.
+- Signing is enabled by default and uses the main patcher's persistent local key directory. Reuse both the installed app's package name and signing key to preserve update compatibility.
 - `--signing-dir PATH` selects that directory; `--android-sdk`, `--keytool`, `--zipalign`, and `--apksigner` override tool discovery.
 - `--unsigned` builds an inspection artifact only; it is not installable as-is.
 - The main patcher takes the **clean** APK, not an already patched APK, so its entire transformation chain is validated.
+- `--package-name` and `--launcher-name` are independent optional choices; omitted values are prompted separately in an interactive run and skipped in `--non-interactive` mode. Empty answers preserve the corresponding original name. See the root [naming and installation effects](../README.md#patch-a-locally-owned-apk); a different package starts with separate private data.
 
 ## Reproduce payloads
 

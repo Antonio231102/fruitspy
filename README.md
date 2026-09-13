@@ -248,7 +248,9 @@ Fruit Ninja's linked GameSpy SDK contains an unused `CDKEY` command path, but th
 
 ## Patch a locally owned APK
 
-The repository does not distribute Fruit Ninja or a prebuilt APK. The patcher accepts only the clean Fruit Ninja 1.7.6 APK with SHA-256 `5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650`. For `armeabi`, `armeabi-v7a`, and `x86`, it applies the **slow-motion fix → matchmaking fix → custom server patch**, in that order. The patcher then removes the obsolete APK signature, aligns the result, and signs it.
+**FruitSpy Patcher** is the APK patching tool. Its startup banner, help, errors and build reports use this name. The command remains `python patcher/patch_apk.py`; the script filename and `patcher/` directory are unchanged.
+
+The repository does not distribute Fruit Ninja or a prebuilt APK. The patcher accepts only the clean Fruit Ninja 1.7.6 APK with SHA-256 `5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650`. For `armeabi`, `armeabi-v7a`, and `x86`, it applies the **slow-motion fix → matchmaking fix → custom server patch**, in that order. A genuinely different package ID then enables **LVL removal in all three ABIs and Java**, before the optional package-name and launcher-name edits. The patcher removes the obsolete APK signature, aligns the result, and signs it.
 
 Both compatibility fixes are included automatically:
 
@@ -261,13 +263,35 @@ Run APK commands from the **repository root**, not `server/` (use `cd ..` first 
 python patcher/patch_apk.py
 ```
 
-The prompts request the clean APK and a server address; no VPS, local IP, or DNS name is predefined. The patcher waits for the user-supplied endpoint before building. By default it writes only `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` beside the source APK, using the selected server address. An explicit second positional argument overrides the output path; existing outputs are refused, so choose a fresh filename for another build. For optional diagnostics, add `--report PATH` to save a JSON build report; internal patch validation, alignment, and signing verification run regardless of report output. For automation with the default filename, this single-line command works in both PowerShell and POSIX shells:
+The guided prompts request the clean APK, then the **server IPv4 address/domain → optional custom package name → optional custom launcher display name**. No server address is predefined. Press Enter at either naming prompt to keep that original value; the two choices are independent. All answers are collected before patching starts, with per-ABI progress beginning at the slow-motion fix. A naming option supplied on the command line skips its own prompt; `--non-interactive` skips both omitted naming options.
+
+By default the patcher writes `<launcher name> FruitSpy - <IP/hostname>.apk` beside the source APK. If the selected launcher name is exactly `FruitSpy`, it writes `FruitSpy - <IP/hostname>.apk` instead. Skipping the launcher-name change uses the original default name, producing `Fruit Ninja FruitSpy - <IP/hostname>.apk`. The package name does not affect the filename.
+
+An explicit second positional argument overrides the output path; existing outputs are refused, so choose a fresh filename for another build. If a launcher name contains filesystem-reserved characters or exceeds portable filename length limits, supply an explicit output path; the launcher label itself is not altered to make a filename.
+
+For optional diagnostics, add `--report PATH` to save a JSON build report, including selected identity changes and affected-entry hashes; internal patch validation, alignment, and signing verification run regardless of report output. For automation with the original names and default filename, this single-line command works in both PowerShell and POSIX shells:
 
 ```text
 python patcher/patch_apk.py "original.apk" --server-host 192.168.100.2 --non-interactive
 ```
 
-Replace `192.168.100.2` with the local or remote IPv4 address reachable by the devices. Short DNS names such as `games.example.net` are accepted for Internet deployments. The DNS value must be at most 18 ASCII characters because every binary rewrite is size-preserving; the interactive prompt displays this warning before accepting the endpoint.
+Replace `192.168.100.2` with the local or remote IPv4 address reachable by the devices. Short DNS names such as `games.example.net` are accepted for Internet deployments. The DNS value must be at most 18 ASCII characters because the endpoint-literal replacements are size-preserving; the interactive prompt displays this warning before accepting the endpoint.
+
+**Optional names:** add either flag, or both:
+
+```text
+python patcher/patch_apk.py "original.apk" "FruitSpy-custom.apk" --server-host games.example.net --package-name org.example.fruitspy --launcher-name "FruitSpy Local" --non-interactive
+```
+
+- `--package-name` changes the Android application ID. Use at least two dot-separated ASCII segments, each starting with a letter and containing only letters, digits or underscores. The maximum is **127 characters**, including dots, to fit this APK's fixed-width resource-package field.
+- `--launcher-name` accepts non-empty, single-line printable Unicode text; surrounding whitespace is trimmed. It changes the application label inherited by the launcher, so the chosen name appears across locales. It does not rename classes, the package, or the game's localized string resources. Other activities inheriting the application label also receive it.
+- Leaving the package unchanged preserves the original install identity, `com.halfbrick.fruitninja`; leaving the launcher name unchanged preserves the original localized label. A label-only change does not create a separate app.
+- A **different package creates a separate installation with fresh private saves, preferences and installation identity**, rather than updating or importing data from the original. It can coexist with the original; legacy SDK shared-external caches are not isolated by this option. Future updates must use the **same package name and signing key**. Google Play licensing and the old store/update link do not transfer to a custom ID.
+- A package different from `com.halfbrick.fruitninja` automatically enables the guarded LVL-removal stage. It selects the native license-success path in all three ABIs and disables the Java license request that otherwise rejects the renamed package and forces a quit. Skipping package customization, explicitly choosing the original package, or changing only the launcher name leaves licensing untouched. No separate LVL flag or additional dependency is required.
+
+Identity editing changes hash-checked compiled manifest attributes and, for a package change, the matching `resources.arsc` package name. Keeping those two names synchronized is necessary because the game and bundled SDKs use `getIdentifier(..., getPackageName())`. The preceding conditional LVL stage changes guarded native instructions and one Java method entry, repairing the DEX signature/checksum while preserving license initialization/cleanup and unrelated dialogs. Resource IDs and Java/JNI class names remain unchanged; no APK decompilation/rebuild or extra Python dependency is required. See the [static-analysis boundary](FRUIT_NINJA_GAMESPY_ANALYSIS.md#patched-apk-boundary). Validation includes native JNI execution in all three ABIs and signed-APK Java control-flow checks. The user confirmed the LVL correction works on `armeabi-v7a` on the S4. At the owner's direction, `armeabi` and `x86` are assumed working and accepted unless users report otherwise; this is not a claim of physical-device verification for those ABIs. No additional ABI device testing is planned.
+
+Earlier identity-only builds covered all four naming combinations with signed APKs, Android manifest/resource parsing, byte comparisons, and the guided terminal flow. The user initially confirmed side-by-side launch alongside `com.halfbrick.fruitninja`, but later reported the renamed package's unlicensed-app forced quit. That initial result did not qualify licensing or extended operation; it motivated the conditional LVL correction above. Keep the original package when no separate installation is needed.
 
 To select an SDK root explicitly (PowerShell and POSIX; replace the path):
 
@@ -287,9 +311,9 @@ Or a **POSIX shell**:
 python patcher/patch_apk.py "original.apk" "FruitSpy-signed.apk" --server-host games.example.net --android-sdk "$ANDROID_HOME" --keytool "$JAVA_HOME/bin/keytool" --zipalign "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/zipalign" --apksigner "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" --non-interactive
 ```
 
-On the first signed build, the patcher generates a random local RSA signing identity and stores it under `%LOCALAPPDATA%\FruitSpy` on Windows, `~/Library/Application Support/FruitSpy` on macOS, or `${XDG_DATA_HOME:-~/.local/share}/fruitspy` on Linux. Use `--signing-dir PATH` to select a different local signing directory. Subsequent builds reuse that identity so they can update an existing FruitSpy installation. Back up this directory: losing it requires uninstalling the existing patched app before installing a build signed by a replacement key. Never upload the keystore, its `signing.json`, generated APKs, or manifests containing deployment-specific addresses to the repository.
+On the first signed build, the patcher generates a random local RSA signing identity and stores it under `%LOCALAPPDATA%\FruitSpy` on Windows, `~/Library/Application Support/FruitSpy` on macOS, or `${XDG_DATA_HOME:-~/.local/share}/fruitspy` on Linux. Use `--signing-dir PATH` to select a different local signing directory. Subsequent builds reuse that identity so they can update an existing FruitSpy installation with the same package name. Back up this directory: losing it requires uninstalling the existing patched app before installing a build with the same package signed by a replacement key. Never upload the keystore, its `signing.json`, generated APKs, or manifests containing deployment-specific addresses to the repository.
 
-The first FruitSpy-signed build cannot update the original game or a patched build signed by someone else's key. Back up any game data you need before uninstalling a differently signed installation. Transfer your signed APK to a compatible Android device and authorize installation from your chosen source as required by that Android version.
+The first FruitSpy-signed build cannot update the original game or a patched build signed by someone else's key. Back up any game data you need before uninstalling a differently signed installation with the same package name. Selecting a different package avoids that update conflict and does not require removing the original, but starts with separate private data. Transfer your signed APK to a compatible Android device and authorize installation from your chosen source as required by that Android version.
 
 Use `--unsigned` only when an unsigned, unaligned intermediate is required. That mode does not require Java or Android Build Tools; alignment and signing must then be completed before installation.
 
@@ -371,4 +395,4 @@ Pre-release preservation project. The source and complete reachable-history publ
 
 The two retired generated APK reports were removed from the published branch history; a fresh clone contains neither file nor their historical blobs. The owner accepts GitHub's retention of the old, non-sensitive reports. No further hosting-side purge or repository migration is planned, and this is not a release blocker.
 
-This technical audit is **not public-release or legal approval**. GPL-2.0-or-later has been selected and the copyright/provenance notices are included; remaining upstream permission, legal/trademark, and author/deployment-metadata decisions still require resolution before changing repository visibility. Local history cleanup does not erase existing clones or hosting-provider caches.
+This technical audit is **not public-release or legal approval**. GPL-2.0-or-later has been selected, the copyright/provenance notices are included, and the owner approves public attribution of commits under their name. Remaining upstream permission, legal/trademark, and other personal or operational/test-metadata decisions still require resolution before changing repository visibility. Local history cleanup does not erase existing clones or hosting-provider caches.

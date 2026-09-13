@@ -54,11 +54,11 @@ Use the neutral combined patcher from the repository root:
 python patcher/patch_apk.py
 ```
 
-The patcher accepts only the allowlisted clean Fruit Ninja 1.7.6 APK, announces the slow motion fix patch, matchmaking fix patch, and custom server patch in that order, requires a user-supplied IPv4 address or short DNS name, applies all three patches to every packaged ABI, and verifies the signed output. See the root `README.md` for complete patching and signing instructions.
+The patcher accepts only the allowlisted clean Fruit Ninja 1.7.6 APK and requires a user-supplied IPv4 address or short DNS name. In guided mode, it then separately asks for optional package and launcher names before any patching begins; empty naming answers keep the corresponding original values. It applies the slow-motion fix, matchmaking fix, and custom server patch to every packaged ABI in that order, conditionally removes Java/native LVL for a changed package, applies selected identity changes, and verifies the signed output. See the root `README.md` for complete patching, naming and signing instructions.
 
 Use the root [README](../README.md) to install the patcher dependencies: a supported Python release (3.11 or newer recommended), a JDK with `keytool`, and Android SDK Build Tools with `zipalign` and `apksigner`. Ordinary patching does not require LLVM or Unicorn because it uses the checked-in native payloads.
 
-By default, only `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` is written beside the source APK. An explicit second positional argument overrides the output path; existing outputs are refused. Add `--report PATH` only to save a diagnostic JSON build report.
+By default, only `<launcher name> FruitSpy - <IP/hostname>.apk` is written beside the source APK, or `FruitSpy - <IP/hostname>.apk` when the launcher name is exactly `FruitSpy`. Skipping launcher customization uses `Fruit Ninja` as the filename's launcher name. An explicit second positional argument overrides the output path; use it if the display name cannot form a portable filename. Existing outputs are refused. Add `--report PATH` only to save a diagnostic JSON build report.
 
 ## Repository boundary
 

@@ -16,9 +16,9 @@ import zipfile
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
-TOOL_NAME = "fruitspy-apk-patcher"
+TOOL_NAME = "FruitSpy Patcher"
 TOOL_VERSION = "1"
 CLEAN_APK_SHA256 = "5e94d16234504f5d2b6948b59371d8535c4364249b76e2533bba09114c808650"
 TARGET_ABIS = ("armeabi", "armeabi-v7a", "x86")
@@ -194,6 +194,28 @@ def parse_server_host(value: str) -> str:
             f"server DNS name must be at most {MAX_SERVER_HOST_BYTES} ASCII characters"
         )
     return hostname
+
+
+def parse_package_name(value: str) -> str:
+    value = value.strip()
+    if len(value) > 127 or re.fullmatch(
+        r"[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+", value
+    ) is None:
+        raise argparse.ArgumentTypeError(
+            "package name must have at least two dot-separated segments, each "
+            "starting with an ASCII letter and containing only letters, digits "
+            "or underscores; maximum 127 characters"
+        )
+    return value
+
+
+def parse_launcher_name(value: str) -> str:
+    value = value.strip()
+    if not value or not value.isprintable():
+        raise argparse.ArgumentTypeError(
+            "launcher name must be non-empty, single-line printable Unicode text"
+        )
+    return value
 
 
 def is_signature_entry(name: str) -> bool:
@@ -454,11 +476,23 @@ def patch_endpoint_library(
     return result, records
 
 
-def patch_library(data: bytes, server_host: str, abi: str) -> tuple[bytes, dict[str, object]]:
+def patch_library(
+    data: bytes,
+    server_host: str,
+    abi: str,
+    *,
+    progress: Callable[[str], None] | None = None,
+) -> tuple[bytes, dict[str, object]]:
     from patcher.nickname_patch import patch_library as patch_nickname_library
 
+    if progress is not None:
+        progress(f"{abi}: applying slow-motion fix...")
     clock_result, clock_record = patch_clock_library(data, CLOCK_PATCHES[abi])
+    if progress is not None:
+        progress(f"{abi}: applying nickname-collision fix...")
     nickname_result, nickname_record = patch_nickname_library(clock_result, abi)
+    if progress is not None:
+        progress(f"{abi}: applying custom server patch...")
     result, endpoint_records = patch_endpoint_library(nickname_result, server_host, abi)
     return result, {
         "abi": abi,
@@ -475,8 +509,20 @@ def patch_library(data: bytes, server_host: str, abi: str) -> tuple[bytes, dict[
     }
 
 
-def patch_apk(source: Path, output: Path, server_host: str) -> dict[str, object]:
+def patch_apk(
+    source: Path,
+    output: Path,
+    server_host: str,
+    *,
+    package_name: str | None = None,
+    launcher_name: str | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, object]:
     server_host = parse_server_host(server_host)
+    if package_name is not None:
+        package_name = parse_package_name(package_name)
+    if launcher_name is not None:
+        launcher_name = parse_launcher_name(launcher_name)
     if source.resolve() == output.resolve():
         raise ValueError("source and output APK paths must differ")
     source_hash = sha256_file(source)
@@ -490,40 +536,77 @@ def patch_apk(source: Path, output: Path, server_host: str) -> dict[str, object]
         f".{output.name}.{secrets.token_hex(8)}.tmp"
     )
     records: list[dict[str, object]] = []
-    seen: set[str] = set()
     removed_signatures: list[str] = []
     patches_by_path = {
         f"lib/{abi}/{LIBRARY}": abi
         for abi in TARGET_ABIS
     }
+    patch_order = ["monotonic_clock", "nickname_collision", "gamespy_endpoint"]
+    identity: dict[str, object] | None = None
+    lvl_dex: dict[str, object] | None = None
 
     try:
         with zipfile.ZipFile(source, "r") as source_zip, zipfile.ZipFile(
             temporary_output, "w"
         ) as output_zip:
+            missing = sorted(set(patches_by_path) - set(source_zip.namelist()))
+            if missing:
+                raise ValueError(f"missing native libraries: {', '.join(missing)}")
+            replacements: dict[str, bytes] = {}
+            for path, abi in patches_by_path.items():
+                replacements[path], record = patch_library(
+                    source_zip.read(path), server_host, abi, progress=progress
+                )
+                records.append(record)
+
+            if package_name is not None or launcher_name is not None:
+                from patcher.identity_patch import ORIGINAL_PACKAGE, patch_identity
+
+                if package_name is not None and package_name != ORIGINAL_PACKAGE:
+                    from patcher.lvl_patch import patch_dex, patch_library as patch_lvl_library
+
+                    patch_order.append("lvl_removal")
+                    for (path, abi), record in zip(patches_by_path.items(), records, strict=True):
+                        if progress is not None:
+                            progress(f"{abi}: removing package-bound LVL check...")
+                        replacements[path], lvl_record = patch_lvl_library(replacements[path], abi)
+                        record["lvl"] = lvl_record
+                        record["output_sha256"] = lvl_record["output_sha256"]
+                    if progress is not None:
+                        progress("Disabling the Java LVL request...")
+                    replacements["classes.dex"], lvl_dex = patch_dex(source_zip.read("classes.dex"))
+
+                if package_name is not None:
+                    if progress is not None:
+                        progress("Applying custom package name...")
+                    patch_order.append("package_name")
+                if launcher_name is not None:
+                    if progress is not None:
+                        progress("Applying custom launcher display name...")
+                    patch_order.append("launcher_name")
+                identity_entries, identity = patch_identity(
+                    source_zip, package_name=package_name, launcher_name=launcher_name
+                )
+                replacements.update(identity_entries)
+
             output_zip.comment = source_zip.comment
             for info in source_zip.infolist():
                 if is_signature_entry(info.filename):
                     removed_signatures.append(info.filename)
                     continue
 
-                data = source_zip.read(info.filename)
-                abi = patches_by_path.get(info.filename)
-                if abi is not None:
-                    data, record = patch_library(data, server_host, abi)
-                    records.append(record)
-                    seen.add(info.filename)
+                if info.filename in replacements:
+                    data = replacements.pop(info.filename)
+                else:
+                    data = source_zip.read(info)
                 output_zip.writestr(info, data)
 
-        missing = sorted(set(patches_by_path) - seen)
-        if missing:
-            raise ValueError(f"missing native libraries: {', '.join(missing)}")
         temporary_output.replace(output)
     except Exception:
         temporary_output.unlink(missing_ok=True)
         raise
 
-    return {
+    manifest: dict[str, object] = {
         "manifest_version": 1,
         "tool": {
             "name": TOOL_NAME,
@@ -534,7 +617,7 @@ def patch_apk(source: Path, output: Path, server_host: str) -> dict[str, object]
             "apk_sha256": source_hash,
             "allowlisted_apk_sha256": CLEAN_APK_SHA256,
         },
-        "patch_order": ["monotonic_clock", "nickname_collision", "gamespy_endpoint"],
+        "patch_order": patch_order,
         "server_host": server_host,
         "removed_signature_entries": sorted(removed_signatures),
         "libraries": records,
@@ -545,6 +628,11 @@ def patch_apk(source: Path, output: Path, server_host: str) -> dict[str, object]
             "zipaligned": False,
         },
     }
+    if identity is not None:
+        manifest["identity"] = identity
+    if lvl_dex is not None:
+        manifest["lvl"] = {"dex": lvl_dex}
+    return manifest
 
 
 def default_signing_directory() -> Path:
@@ -894,6 +982,9 @@ def build_output(
     keytool: Path | None = None,
     zipalign: Path | None = None,
     apksigner: Path | None = None,
+    package_name: str | None = None,
+    launcher_name: str | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict[str, object]:
     source = source.expanduser().resolve()
     output = output.expanduser().resolve()
@@ -917,9 +1008,18 @@ def build_output(
     with tempfile.TemporaryDirectory(prefix=".fruitspy-patch-", dir=output.parent) as temporary:
         work = Path(temporary)
         unsigned_apk = work / "unsigned.apk"
-        manifest = patch_apk(source, unsigned_apk, server_host)
+        manifest = patch_apk(
+            source,
+            unsigned_apk,
+            server_host,
+            package_name=package_name,
+            launcher_name=launcher_name,
+            progress=progress,
+        )
         final_apk = unsigned_apk
         if tools is not None:
+            if progress is not None:
+                progress("Aligning, signing and verifying APK...")
             signing_root = signing_directory or default_signing_directory()
             material = ensure_signing_material(signing_root, tools.keytool)
             signed_apk = work / "signed.apk"
@@ -967,15 +1067,33 @@ def prompt_value(label: str) -> str:
     return value
 
 
+def prompt_optional_value(
+    label: str, validate: Callable[[str], str]
+) -> str | None:
+    while True:
+        value = input(label).strip()
+        if not value:
+            return None
+        try:
+            return validate(value)
+        except argparse.ArgumentTypeError as exc:
+            print(f"Invalid value: {exc}", file=sys.stderr)
+
+
 def collect_arguments(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
-) -> tuple[Path, Path, str, Path | None]:
+) -> tuple[Path, Path, str, str | None, str | None, Path | None]:
     interactive = not args.non_interactive and sys.stdin.isatty()
     if interactive:
         print(
             "This build will apply the slow motion fix patch, matchmaking fix patch, "
             "and custom server patch, in that order."
+        )
+        print(
+            "Package name and launcher display name are independent, optional "
+            "changes; empty input keeps each original value. A different package "
+            "also disables Java/native LVL before renaming."
         )
         print("No FruitSpy server address is built in; you must supply one.")
         print(
@@ -1006,17 +1124,48 @@ def collect_arguments(
     else:
         server_host = args.server_host
 
+    package_name = args.package_name
+    if interactive and package_name is None:
+        print(
+            "A different package name creates a separate app with separate local "
+            "data. Keep the original package for maximum compatibility."
+        )
+        package_name = prompt_optional_value(
+            "Custom package name (empty to keep original): ", parse_package_name
+        )
+    launcher_name = args.launcher_name
+    if interactive and launcher_name is None:
+        launcher_name = prompt_optional_value(
+            "Custom launcher display name (empty to keep original): ",
+            parse_launcher_name,
+        )
+
     output = args.output
     if output is None:
-        output = source.with_name(f"Fruit Ninja v1.7.6 FruitSpy {server_host}.apk")
-    return source, output, server_host, args.report
+        display_name = launcher_name or "Fruit Ninja"
+        prefix = "FruitSpy" if display_name == "FruitSpy" else f"{display_name} FruitSpy"
+        filename = f"{prefix} - {server_host}.apk"
+        if (
+            re.search(r'[<>:"/\\|?*]', filename)
+            or len(filename.encode("utf-8")) > 255
+            or len(filename.encode("utf-16-le")) // 2 > 255
+        ):
+            raise ValueError(
+                "launcher name cannot form a portable default APK filename; "
+                "supply an explicit output APK path"
+            )
+        output = source.with_name(filename)
+    return source, output, server_host, package_name, launcher_name, args.report
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
+        prog=TOOL_NAME,
         description=(
-            "Build a Fruit Ninja 1.7.6 APK with the slow motion fix patch, "
+            f"{TOOL_NAME} builds a Fruit Ninja 1.7.6 APK with the slow motion fix patch, "
             "matchmaking fix patch, and custom server patch, in that order. "
+            "A changed package first disables Java/native LVL, then optional "
+            "package-name and launcher-name changes follow. "
             "No server address is predefined."
         )
     )
@@ -1029,6 +1178,20 @@ def main() -> int:
             "required server IPv4 address or DNS name; there is no default "
             f"and DNS names are limited to {MAX_SERVER_HOST_BYTES} ASCII characters"
         ),
+    )
+    parser.add_argument(
+        "--package-name",
+        type=parse_package_name,
+        help=(
+            "optional Android application ID (maximum 127 ASCII characters); "
+            "a different ID creates a separate app with separate local data "
+            "and disables Java/native LVL"
+        ),
+    )
+    parser.add_argument(
+        "--launcher-name",
+        type=parse_launcher_name,
+        help="optional launcher display name; independent of the application ID",
     )
     parser.add_argument(
         "--unsigned",
@@ -1047,9 +1210,12 @@ def main() -> int:
     )
     parser.add_argument("--non-interactive", action="store_true")
     args = parser.parse_args()
+    print(TOOL_NAME, flush=True)
 
     try:
-        source, output, server_host, report = collect_arguments(parser, args)
+        source, output, server_host, package_name, launcher_name, report = collect_arguments(
+            parser, args
+        )
         manifest = build_output(
             source=source,
             output=output,
@@ -1061,17 +1227,29 @@ def main() -> int:
             keytool=args.keytool,
             zipalign=args.zipalign,
             apksigner=args.apksigner,
+            package_name=package_name,
+            launcher_name=launcher_name,
+            progress=lambda message: print(message, flush=True),
         )
-    except (OSError, ValueError, zipfile.BadZipFile) as exc:
-        print(f"patch_apk: {exc}", file=sys.stderr)
+    except (OSError, ValueError, argparse.ArgumentTypeError, zipfile.BadZipFile) as exc:
+        print(f"{TOOL_NAME}: {exc}", file=sys.stderr)
         return 1
 
     mode = "unsigned" if args.unsigned else "signed and verified"
-    print(f"Created {mode} APK: {output}")
+    print(f"{TOOL_NAME}: created {mode} APK: {output}")
     print(
         "Applied the slow motion fix patch, matchmaking fix patch, and custom "
         f"server patch to all {len(manifest['libraries'])} packaged libraries."
     )
+    if "lvl" in manifest:
+        print(
+            "Applied conditional LVL removal to Java and "
+            f"all {len(manifest['libraries'])} native libraries."
+        )
+    if package_name is not None:
+        print(f"Application ID: {package_name}")
+    if launcher_name is not None:
+        print(f"Launcher display name: {launcher_name}")
     if report is not None:
         print(f"Manifest: {report}")
     signing = manifest.get("signing")
