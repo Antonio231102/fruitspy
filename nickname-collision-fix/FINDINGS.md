@@ -81,17 +81,23 @@ The original game host predicates exercised by the regression harness are `0x19c
 
 ### Payload placement and input safety
 
-The canonical builder, `patcher/patch_apk.py`, starts from the fully allowlisted clean APK and applies the **slow-motion fix → matchmaking fix → custom server patch**. The nickname implementation is `patcher/nickname_patch.py`; native payloads and their build/regression tools remain under `nickname-collision-fix/`. The nickname helper follows the existing clock payload in the executable load segment; x86 adds three zero alignment bytes before its helper.
+The canonical builder, FruitSpy Patcher (`patcher/patch_apk.py`), starts from the fully allowlisted clean APK and applies the **slow-motion fix → matchmaking fix → custom server patch** to all three ABIs. Only a package different from `com.halfbrick.fruitninja` then triggers native and Java LVL removal, before optional identity changes. Keeping the original package, including launcher-only changes, retains original LVL. The nickname implementation is `patcher/nickname_patch.py`; native payloads and their build/regression tools remain under `nickname-collision-fix/`. The nickname helper follows the existing clock payload in the executable load segment; x86 adds three zero alignment bytes before its helper.
 
 The existing ELF injector performs placement, zero-gap, segment-overlap, alignment, and file-offset checks. The nickname stage supplies an updated placement descriptor without changing the clock payload. Exact original hook bytes and both payload hashes are required. Duplicate patching and altered hook instructions are rejected.
 
 The shared APK builder/signing routines retain responsibility for removing obsolete signatures, selecting the existing signing identity, alignment, and signature verification. No proprietary game library or signing key is included in this subproject.
 
-The manifest records `patch_order` as `["monotonic_clock", "nickname_collision", "gamespy_endpoint"]` and each library's `clock`, `nickname`, and `endpoint` stages. The nickname input hash matches the clock output hash; the final library hash includes the endpoint patch.
+The opt-in diagnostic JSON report identifies its tool as `FruitSpy Patcher`. Its `patch_order` starts with `["monotonic_clock", "nickname_collision", "gamespy_endpoint"]`, appending `lvl_removal` only for a changed package, then `package_name` and/or `launcher_name` when selected. Each library records `clock`, `nickname`, and `endpoint` stages, plus `lvl` when applied; Java LVL and optional identity changes have their own report records. The nickname input hash matches the clock output hash; the final library hash includes the endpoint patch and any native LVL removal.
 
 ## Verification performed
 
-The original qualification artifacts used the former standalone workflow, which applied clock and endpoint transformations before the nickname stage. The main patcher now applies clock, nickname, then endpoints; integration leaves the native payloads unchanged.
+The original qualification artifacts used the former standalone workflow, which applied clock and endpoint transformations before the nickname stage. FruitSpy Patcher applies clock, nickname, then endpoints, with the conditional LVL and optional identity stages described above; integration leaves the clock and nickname payloads unchanged. The dated results below retain their original artifact identities and counts.
+
+### Current FruitSpy Patcher integration
+
+At the current integration checkpoint (`639b0e8`), an actual interactive signed build verified FruitSpy Patcher branding, conditional LVL removal, reuse of the existing signing identity, and v1/v2/v3 signatures. All 22 patcher tests passed, including Unicorn tests with `PYTHONPATH=nickname-collision-fix/build/deps`. This later result does not replace the historical nine-test integration campaign or the 66 nickname scenarios below, and it does not claim a new device match or byte identity with an older signed APK.
+
+The user confirmed ARMv7 LVL success on the Galaxy S4. `armeabi` and `x86` LVL are accepted/assumed working unless users report otherwise; they are not physically device-qualified for LVL by the older clock or nickname records. No additional LVL device checks are release gates. See the root [patching instructions](../README.md#patch-a-locally-owned-apk) for the shared naming and signing workflow. This integration is not evidence of a versioned or published release.
 
 ### Main-patcher integration
 

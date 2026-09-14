@@ -23,13 +23,14 @@ Publish a reproducible, source-only compatibility fix for Fruit Ninja 1.7.6 that
 Purpose: make the compatibility fix usable with an arbitrary public or self-hosted FruitSpy endpoint.
 
 - [x] Root the combined transformation in the allowlisted original Fruit Ninja 1.7.6 APK instead of a VPS-specific intermediate.
-- [x] Define one public pipeline in `../patcher/` that applies the monotonic-clock correction, nickname-collision matchmaking fix, and configurable FruitSpy endpoint transformation in that order.
+- [x] Define one public pipeline, FruitSpy Patcher in `../patcher/`, that applies the monotonic-clock correction, nickname-collision matchmaking fix, and configurable FruitSpy endpoint transformation in that order.
 - [x] Keep the compatibility analysis, assembly, reproducible payload binaries, and payload hashes under `slow-motion-fix/`; keep APK orchestration and verification under `patcher/`.
 - [x] Require the exact supported whole-APK input hash before producing output, with per-library hashes as additional checks.
 - [x] Apply clock, nickname, and endpoint transformations to `armeabi`, `armeabi-v7a`, and `x86`.
+- [x] Add independent optional package/launcher identity changes. Only a package different from `com.halfbrick.fruitninja` triggers native and Java LVL removal after the endpoint stage and before identity edits; original-package and launcher-only builds retain original LVL. See the root [patching instructions](../README.md#patch-a-locally-owned-apk).
 - [x] Implement the ABI-specific FruitSpy endpoint and NatNeg resolver patch for legacy `armeabi`.
 - [x] Accept every endpoint form promised by FruitSpy: IPv4 or a DNS name of at most 18 ASCII characters.
-- [x] Offer `--report PATH` for a diagnostic JSON report with input, output, per-library, payload, configuration, and tool-version hashes. Ordinary builds write only `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` beside the source APK; an explicit second positional argument overrides that output path.
+- [x] Offer `--report PATH` for a diagnostic JSON report identifying FruitSpy Patcher and recording the selected stage order, input/output and payload/library hashes, configuration, and tool details. Ordinary builds write only the APK beside the source; an explicit second positional argument overrides the output path. See the root [patching instructions](../README.md#patch-a-locally-owned-apk) for current filename rules.
 - [x] Generate and persist a random per-user signing identity by default, while retaining an explicit unsigned mode for external signing.
 - [x] Cover IPv4 and short-DNS composition across all three ABIs.
 
@@ -82,7 +83,7 @@ Exit criteria:
 
 Purpose: turn the existing static evidence into repeatable release gates.
 
-- [x] Add composition coverage for every supported ABI and IPv4/short-DNS endpoints in `../patcher/tests/test_patch_apk.py`, including a locally supplied clean-APK integration case. The recorded integrated campaign passed nine tests; this does not claim exhaustive corruption coverage.
+- [x] Add composition coverage for every supported ABI and IPv4/short-DNS endpoints in `../patcher/tests/test_patch_apk.py`, including a locally supplied clean-APK integration case. The 2026-09-09 integrated campaign passed nine tests; retain that historical count separately from the [current FruitSpy Patcher integration evidence](../nickname-collision-fix/FINDINGS.md#current-fruitspy-patcher-integration). Neither result claims exhaustive corruption coverage.
 - [x] Test rejection of an unsupported whole APK without producing output.
 - [ ] Extend negative coverage to independently modified native libraries, payload binaries, instruction ranges, and ELF layouts; current runtime hash/preimage checks already fail closed.
 - [ ] Test missing and duplicate native-library ZIP entries.
@@ -115,7 +116,8 @@ Purpose: publish only maintainable compatibility source and reproducible evidenc
 - [x] Confirm that audited reachable history and pending tracked files contain no game APK, extracted game library, private signing material, capture, or game-asset dump. This does not certify ignored local files or a future release package.
 - [x] Remove the retired generated `server/apk-patch-map.json` and `server/apk-patch-report.json` from the pushed reachable history. A fresh remote clone has neither path nor their three historical blobs; pruning one report-only commit reduced the reachable history from the audited 47 commits to 46.
 - [x] Accept GitHub's retention of the old, non-sensitive generated reports. The owner chose to keep the existing repository; no additional purge or migration is planned, and this is not a release blocker.
-- [ ] Resolve owner privacy decisions for historical author/committer attribution and remaining operational/test metadata. Accepting retention of the two generated reports does not resolve these separate publication decisions.
+- [x] Owner approves public attribution of the repository's commits under their name. This does not reinstate a project-ownership copyright notice or authorize a visibility change.
+- [ ] Resolve remaining personal and operational/test-metadata decisions. Approval of commit-name attribution and retention of the two generated reports is not blanket approval for publishing other data.
 - [ ] Commit and push the final reviewed release contents and tag a versioned alpha release after approval; reachable-history cleanup is already pushed.
 - [ ] Publish source, tests, patch payloads authored by this project, protocol/analysis notes, checksums, and patch tooling only—never a Fruit Ninja APK.
 - [ ] Complete legal and trademark review before making the repository public.

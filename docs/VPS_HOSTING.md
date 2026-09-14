@@ -231,7 +231,7 @@ systemctl --user enable --now fruitspy.service
 systemctl --user status fruitspy.service
 ```
 
-Some providers require an administrator to enable lingering. Confirm `loginctl show-user \"$USER\" --property=Linger` reports `Linger=yes`; otherwise the user service can stop after the last login session.
+Some providers require an administrator to enable lingering. Confirm `loginctl show-user "$USER" --property=Linger` reports `Linger=yes`; otherwise the user service can stop after the last login session.
 
 The rootless unit runs directly from the source checkout with `/usr/bin/python3`, so it works when the provider has Python 3.11 or newer but does not install the optional `python3-venv` package. Follow logs with:
 
@@ -285,7 +285,7 @@ The local check proves process readiness. The remote check additionally exercise
 
 ## 9. Patch the client APKs
 
-On your local computer, not on the VPS:
+On your local computer, not on the VPS, run **FruitSpy Patcher**:
 
 ```text
 python patcher/patch_apk.py original.apk patched.apk \
@@ -293,11 +293,13 @@ python patcher/patch_apk.py original.apk patched.apk \
   --non-interactive
 ```
 
-Use the exact DNS name configured in step 2, not a value from `/etc/fruitspy/config.json`. The patcher applies the slow-motion fix, matchmaking fix, and custom server patch in that order to all three ABIs, creates or reuses a random per-user signing identity, aligns and signs the APK, and verifies the result. The example explicitly chooses `patched.apk`; omit that second positional argument to write `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` beside the source APK. Existing outputs are refused. Only the APK is written by default; add `--report PATH` to save a diagnostic JSON build report.
+Use the exact DNS name configured in step 2, not a value from `/etc/fruitspy/config.json`. FruitSpy Patcher applies the slow-motion fix, matchmaking fix, and custom server patch in that order to all three ABIs. Optional `--package-name` and `--launcher-name` changes are independent; omitting them in non-interactive mode keeps the original values. A package different from `com.halfbrick.fruitninja` also triggers Java/native LVL removal before identity changes. The default package and launcher-only changes retain the original LVL behavior. The patcher creates or reuses a random per-user signing identity, aligns and signs the APK, and verifies the result.
+
+The example explicitly chooses `patched.apk`. Without that second positional argument, the original launcher name produces `Fruit Ninja FruitSpy - <IPv4/domain>.apk` beside the source APK. A custom launcher name replaces `Fruit Ninja`; the exact name `FruitSpy` instead produces `FruitSpy - <IPv4/domain>.apk`. Existing outputs are refused. Only the APK is written by default; add `--report PATH` to save a diagnostic JSON build report.
 
 On the patching computer, use a supported Python release (3.11 or newer is recommended and also satisfies the server requirement), a JDK (`keytool`), and Android SDK Build Tools (`zipalign` and `apksigner`). Follow the root [README](../README.md) for dependency installation and tool discovery; the Java and Android tools are not server runtime dependencies.
 
-The first patched installation cannot update an original copy or a build signed by another key. Later builds from this computer can update one another because the local key is persistent. Back up the FruitSpy signing directory documented in `README.md`; never upload an original or patched APK, signing material, generated deployment manifest, or extracted game assets to the VPS or repository.
+Android updates require the same package name and signing key: a patched APK cannot update a same-package original or a build signed by another key. A different package can coexist with the original game but starts with separate private data. Later builds reuse the persistent local identity and can update installations with that same package and key. Back up the FruitSpy signing directory documented in the [root README](../README.md#patch-a-locally-owned-apk); never upload an original or patched APK, signing material, generated deployment manifest, or extracted game assets to the VPS or repository.
 
 ## 10. Validate Internet gameplay
 

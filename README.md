@@ -7,7 +7,7 @@ FruitSpy is a standalone GameSpy-compatible multiplayer service for Fruit Ninja 
 ## Repository layout
 
 - `server/` — standalone GameSpy-compatible services, deployment configuration, and protocol tests.
-- `patcher/` — neutral interactive/non-interactive APK patcher, automatic local signing workflow, and patcher tests.
+- `patcher/` — FruitSpy Patcher, with interactive/non-interactive APK builds, automatic local signing, and patcher tests.
 - `slow-motion-fix/` — slow-motion investigation, validation records, native payload source, reproducible payload binaries, and payload build tooling.
 - `nickname-collision-fix/` — matchmaking-fix investigation, qualification records, native payload source/binaries, and native build and regression tools.
 
@@ -311,7 +311,7 @@ Or a **POSIX shell**:
 python patcher/patch_apk.py "original.apk" "FruitSpy-signed.apk" --server-host games.example.net --android-sdk "$ANDROID_HOME" --keytool "$JAVA_HOME/bin/keytool" --zipalign "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/zipalign" --apksigner "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION/apksigner" --non-interactive
 ```
 
-On the first signed build, the patcher generates a random local RSA signing identity and stores it under `%LOCALAPPDATA%\FruitSpy` on Windows, `~/Library/Application Support/FruitSpy` on macOS, or `${XDG_DATA_HOME:-~/.local/share}/fruitspy` on Linux. Use `--signing-dir PATH` to select a different local signing directory. Subsequent builds reuse that identity so they can update an existing FruitSpy installation with the same package name. Back up this directory: losing it requires uninstalling the existing patched app before installing a build with the same package signed by a replacement key. Never upload the keystore, its `signing.json`, generated APKs, or manifests containing deployment-specific addresses to the repository.
+On the first signed build, the patcher generates a random local RSA signing identity as **`signing.p12` plus `signing.json`** under `%LOCALAPPDATA%\FruitSpy` on Windows, `~/Library/Application Support/FruitSpy` on macOS, or `${XDG_DATA_HOME:-~/.local/share}/fruitspy` on Linux. `signing.json` contains the alias and passwords; both files are required. Use `--signing-dir PATH` to select a different local signing directory. Subsequent builds reuse that identity so they can update an existing FruitSpy installation with the same package name. Back up both files securely: losing the identity requires uninstalling the existing patched app before installing a build with the same package signed by a replacement key. Never upload either signing file, generated APKs, or reports containing deployment-specific addresses to the repository.
 
 The first FruitSpy-signed build cannot update the original game or a patched build signed by someone else's key. Back up any game data you need before uninstalling a differently signed installation with the same package name. Selecting a different package avoids that update conflict and does not require removing the original, but starts with separate private data. Transfer your signed APK to a compatible Android device and authorize installation from your chosen source as required by that Android version.
 
@@ -329,10 +329,12 @@ These are optional developer checks, not installation steps. Start the following
 cd server
 python -m unittest
 cd ..
-python -m unittest patcher.tests.test_patch_apk
+python -m unittest discover -s patcher/tests -v
 ```
 
-The server suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, activity-aware relay idle expiry, byte and packet limits, and global relay capacity. The separate patcher suite covers deterministic clock/nickname/endpoint composition, all three ABIs, neutral endpoint input, local key persistence, alignment, and signing verification.
+The server suite covers cryptography, configuration validation, admission controls, connection deadlines, listener health, malformed-input recovery, PeerChat, QR2 registration and rate limiting, server discovery, NatNeg pairing, direct-path cancellation, relay endpoint proof, opaque forwarding, activity-aware relay idle expiry, byte and packet limits, and global relay capacity. The complete patcher suite covers deterministic clock/nickname/endpoint composition across all three ABIs, endpoint input, independent identity choices and output naming, resource-namespace consistency, conditional native/Java LVL removal and its guards, local key persistence, alignment, and signing verification.
+
+Real-APK cases require the privately supplied allowlisted input; the native JNI execution case additionally requires the optional pinned Unicorn dependency described above. Without those inputs, the affected cases skip. The latest recorded run passed **all 22 patcher tests**, including native execution with `PYTHONPATH=nickname-collision-fix/build/deps`. If using that local dependency directory, set `$env:PYTHONPATH = "nickname-collision-fix/build/deps"` in PowerShell or `export PYTHONPATH=nickname-collision-fix/build/deps` in a POSIX shell before discovery from the repository root. The recent actual interactive signed build also verified FruitSpy Patcher branding, conditional LVL removal, reuse of the existing signing identity, and v1/v2/v3 signatures; this is build evidence, not new device or server qualification.
 
 The combined commands above finish in the repository root. **Change into `server/` once before all the remaining verification commands in this section**, and remain there through the relay probe:
 
@@ -380,6 +382,8 @@ It is intentionally excluded from test discovery because its wall-clock duration
 ## Online play
 
 LAN support remains the compatibility baseline. The guarded direct-first service is deployed on a public IPv4 VPS with automatic relay fallback after three seconds. A controlled Wi-Fi/cellular pair that previously had a one-way direct path completed two consecutive relayed games and a reverse-host game. A LAN game under the same `auto` policy remained direct and allocated no relay. Evidence, configuration, and failure classification are in [DEPLOYMENT.md](DEPLOYMENT.md); further hardening remains tracked in [ROADMAP.md](ROADMAP.md).
+
+The latest recorded server deployment is `35c1737`. The later patcher checkpoint `639b0e8` includes the FruitSpy Patcher branding and prior identity/conditional-LVL work; it contains no server change or new deployment. These implementation checkpoints are not a tagged or published release.
 
 ## License and third-party attribution
 

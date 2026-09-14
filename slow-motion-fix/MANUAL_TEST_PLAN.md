@@ -1,6 +1,6 @@
 # Manual runtime validation
 
-These steps require manual execution on an emulator or physical device. For diagnostic builds, request `--report PATH` and retain the generated JSON report because the endpoint and per-user signing identity make each installable APK environment-specific. Ordinary patching writes only the APK. Exact-duration tests are waived by user decision: qualitative normal pace plus emulator-to-real-device LAN synchronization is the speed acceptance gate.
+These steps require manual execution on an emulator or physical device. For diagnostic builds from FruitSpy Patcher (`python patcher/patch_apk.py`), request `--report PATH` and retain the generated JSON report: endpoint, optional identity choices, conditional LVL removal, and per-user signing identity can affect the installable APK. Ordinary patching writes only the APK. Exact-duration tests are waived by user decision: qualitative normal pace plus emulator-to-real-device LAN synchronization was the speed acceptance gate, satisfied by the recorded results below.
 
 As of 2026-09-09, the owner accepts the current slow-motion patch as fully functional with high confidence. The procedures below preserve the original qualification workflow and are available for issue reproduction, not a new pre-release testing obligation. Long-session investigation is deferred until user reports identify a problem. No further x86 emulator or actual ARMv5/ARMv6 device testing is planned; game UI actions remain user-only.
 
@@ -21,6 +21,8 @@ SHA-256 recorded in the diagnostic JSON report explicitly selected by PATH
 ```
 
 By default both APKs use package `com.halfbrick.fruitninja`, but the original and locally generated APK normally have different signing certificates. Back up saves before changing installations. APKs generated later with the same package name and persistent local FruitSpy key can update one another. An optional custom package creates a separate installation with fresh private data; a custom launcher label alone does not change install identity. See the root [naming instructions](../README.md#patch-a-locally-owned-apk).
+
+Only a package different from `com.halfbrick.fruitninja` enables native and Java LVL removal, after the clock/nickname/endpoint stages and before identity edits. Keeping or explicitly choosing the original package, including launcher-only changes, retains original LVL. The historical clock/device results below are not physical LVL qualification; see the [current integration and LVL acceptance boundary](../nickname-collision-fix/FINDINGS.md#current-fruitspy-patcher-integration).
 
 ## Record the environment
 

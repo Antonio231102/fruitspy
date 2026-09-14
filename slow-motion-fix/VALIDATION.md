@@ -2,7 +2,9 @@
 
 ## Current acceptance — 2026-09-09
 
-**Fully functional, with high confidence**, accepted by the project owner based on the recorded runtime and native evidence. The integrated main patcher also passed nine tests and 66 native nickname scenarios and produced a signed APK byte-identical to the qualified build. Further long-session timing/stability investigation and potential changes will be initiated in response to user reports, not as additional release gates. This acceptance preserves the scope and limitations of each observation below.
+**Fully functional, with high confidence**, accepted by the project owner based on the recorded runtime and native evidence. At this 2026-09-09 checkpoint, the integrated main patcher also passed nine tests and 66 native nickname scenarios and produced a signed APK byte-identical to the qualified build. Further long-session timing/stability investigation and potential changes will be initiated in response to user reports, not as additional release gates. This acceptance preserves the scope and limitations of each observation below.
+
+The later [FruitSpy Patcher integration evidence](../nickname-collision-fix/FINDINGS.md#current-fruitspy-patcher-integration) records the current branding, conditional LVL behavior, signing check and 22-test result separately. The historical timing/device evidence here does not qualify LVL removal on those devices or imply byte identity for current configurable builds.
 
 ## 2026-09-04 cross-version LAN/VPS test
 
@@ -95,7 +97,7 @@ These qualify the reported high-refresh and lifecycle behavior on this physical 
 
 ## 2026-09-09 accelerated native clock-boundary verification
 
-The current signed nickname/clock combined APK, `nickname-collision-fix/build/FruitSpy-Nickname-Fix-Preferred.apk` (SHA-256 `5dc4a4f96a1efcc3cb7de8597124cb8b62fc747c5c1fe7cc0548e47ac4748eb6`), passed accelerated timer-path execution in Unicorn 2.1.4 for `armeabi`, `armeabi-v7a`, and `x86`.
+At this 2026-09-09 checkpoint, the signed nickname/clock combined APK, `nickname-collision-fix/build/FruitSpy-Nickname-Fix-Preferred.apk` (SHA-256 `5dc4a4f96a1efcc3cb7de8597124cb8b62fc747c5c1fe7cc0548e47ac4748eb6`), passed accelerated timer-path execution in Unicorn 2.1.4 for `armeabi`, `armeabi-v7a`, and `x86`.
 
 Twelve scenarios per ABI at load bases `0x10000000` and `0x38000000` produced **72 passing scenario executions and 222 native frame updates**, in approximately 0.53 seconds. Coverage includes normal frames, unsigned low-word wrap with subsequent frames, signed-boundary crossing, landing exactly on zero, 250,000/250,001-microsecond guard boundaries both with and without wrap, a 30-second gap, an unsigned-maximum gap, zero elapsed time, and wrap at a later monotonic-clock epoch. Disabling the guard cutoff in disposable emulated memory caused the expected assertion mismatch in each ABI; APK files were not modified.
 

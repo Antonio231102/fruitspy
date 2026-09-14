@@ -27,9 +27,9 @@ The initial investigation used a separately copied FruitSpy VPS APK that already
 - Statically verified hardened candidate SHA-256: `ee67e367f06d6cdbdb51ed5c5f9e892f7605439d3ff0876556bd99b856d01b21`
 - Signer SHA-256: `95e24a3785f3a47bd19a8acb3920fe5d0a25e70b42169df262d6a0f15947c448`
 
-Both candidates use the same signer as the existing FruitSpy VPS APK, permitting an update install without changing package identity.
+Both historical candidates used the same signer as the then-existing FruitSpy VPS APK, permitting an update install without changing package identity.
 
-The current release-facing pipeline is `../patcher/patch_apk.py`. It starts from the allowlisted original APK and applies the hardened clock correction, nickname-collision matchmaking fix, and neutral user-configured endpoint transformation in that order. It uses a persistent per-user signing identity rather than the historical development signer. Ordinary builds write only a server-named APK; `--report PATH` explicitly requests a diagnostic JSON build report.
+The current shared pipeline is FruitSpy Patcher, invoked through `../patcher/patch_apk.py`. It starts from the allowlisted original APK and applies the hardened clock correction, nickname-collision matchmaking fix, and user-configured endpoint transformation to all three ABIs in that order. Only a package different from `com.halfbrick.fruitninja` then triggers native and Java LVL removal, before optional package/launcher identity edits. The original package and launcher-only changes retain original LVL. It uses a persistent per-user signing identity rather than the historical development signer. Ordinary builds write only the APK; `--report PATH` explicitly requests a diagnostic JSON build report. See the root [patching instructions](../README.md#patch-a-locally-owned-apk) for current output naming and signing details.
 
 ## Runtime validation
 
@@ -119,7 +119,7 @@ Implementation properties:
 - Exact input, payload, and output hashes fail closed on unsupported binaries
 - Deterministic payload reproduction from the checked-in assembly
 
-The integrated main patcher produced an aligned, signed APK byte-identical to the qualified build. Recorded runtime evidence and accelerated execution of all three native timer paths support the owner's high-confidence functional acceptance. Untested hardware and error paths remain documented; no new timing-patch change is scheduled solely for speculative long-session concerns.
+At the 2026-09-09 integration checkpoint, the main patcher produced an aligned, signed APK byte-identical to the qualified build. That result belongs to the recorded endpoint, package identity and signing key, not every current FruitSpy Patcher configuration. Recorded runtime evidence and accelerated execution of all three native timer paths support the owner's high-confidence functional acceptance. Untested hardware and error paths remain documented; no new timing-patch change is scheduled solely for speculative long-session concerns.
 
 ### Initial wall-clock prototype
 

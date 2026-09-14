@@ -169,7 +169,7 @@ From a separate network, verify TCP exposure with a TCP connection tool and UDP 
 
 ## Patch test clients
 
-From the repository root, build each test client from the clean, lawfully owned Fruit Ninja 1.7.6 APK using the exact public DNS name:
+From the repository root, use **FruitSpy Patcher** to build each test client from the clean, lawfully owned Fruit Ninja 1.7.6 APK using the exact public DNS name:
 
 ```text
 python patcher/patch_apk.py original.apk patched.apk \
@@ -177,11 +177,13 @@ python patcher/patch_apk.py original.apk patched.apk \
   --non-interactive
 ```
 
-The patcher rejects any whole-APK hash other than the supported clean release and applies the slow-motion fix, matchmaking fix, and custom server patch in that order to all three packaged ABIs. It writes only the APK by default; `--report PATH` optionally saves the diagnostic JSON build report. By default it discovers JDK `keytool` plus Android SDK `zipalign` and `apksigner`, creates a random per-user signing key on the first run, aligns and signs the APK, and verifies both alignment and its legacy-compatible v1 signature. Later builds reuse the same local identity for update compatibility. These checks do not depend on saving a report.
+FruitSpy Patcher rejects any whole-APK hash other than the supported clean release and applies the slow-motion fix, matchmaking fix, and custom server patch in that order to all three packaged ABIs. Optional `--package-name` and `--launcher-name` changes are independent; omitting them in non-interactive mode preserves the original values. A package different from `com.halfbrick.fruitninja` also removes Java/native LVL after those three patches and before identity changes. The default package and launcher-only changes retain the original LVL behavior.
 
-The example explicitly selects `patched.apk`. Without the second positional argument, the output is `Fruit Ninja v1.7.6 FruitSpy <IPv4/domain>.apk` beside the source APK. Existing output paths are refused; choose a fresh path for a subsequent build.
+It writes only the APK by default; `--report PATH` optionally saves the diagnostic JSON build report. By default it discovers JDK `keytool` plus Android SDK `zipalign` and `apksigner`, creates a random per-user signing key on the first run, aligns and signs the APK, and verifies both alignment and its legacy-compatible v1 signature. Later builds reuse the same local identity. These checks do not depend on saving a report.
 
-Back up the FruitSpy signing directory documented in `README.md`. Losing it requires uninstalling the existing patched application before installing a build signed by a new key. Never upload source or generated APKs, signing keys, signing passwords, deployment manifests, packet captures, or device identifiers to the repository.
+The example explicitly selects `patched.apk`. Without the second positional argument, the original launcher name produces `Fruit Ninja FruitSpy - <IPv4/domain>.apk` beside the source APK. A custom launcher name replaces `Fruit Ninja`; the exact name `FruitSpy` instead produces `FruitSpy - <IPv4/domain>.apk`. Existing output paths are refused; choose a fresh path for a subsequent build.
+
+Android updates require the same package name and signing key. A different package can coexist with the original game but has separate private data. Back up the FruitSpy signing directory documented in the [root README](README.md#patch-a-locally-owned-apk); losing its key requires uninstalling the existing patched application before installing a differently signed build with that same package. Never upload source or generated APKs, signing keys, signing passwords, deployment manifests, packet captures, or device identifiers to the repository.
 
 ## Two-network validation matrix
 
